@@ -17,6 +17,7 @@ export type Database = {
       appointments: {
         Row: {
           barber_id: string | null
+          client_birth_date: string | null
           client_name: string
           client_phone: string | null
           company_id: string | null
@@ -32,6 +33,7 @@ export type Database = {
         }
         Insert: {
           barber_id?: string | null
+          client_birth_date?: string | null
           client_name: string
           client_phone?: string | null
           company_id?: string | null
@@ -47,6 +49,7 @@ export type Database = {
         }
         Update: {
           barber_id?: string | null
+          client_birth_date?: string | null
           client_name?: string
           client_phone?: string | null
           company_id?: string | null
@@ -180,6 +183,63 @@ export type Database = {
           webhook_url?: string | null
         }
         Relationships: []
+      }
+      clients: {
+        Row: {
+          birth_date: string | null
+          company_id: string | null
+          created_at: string | null
+          id: string
+          last_visit_at: string | null
+          name: string
+          phone: string
+          tags: string[] | null
+          total_visits: number | null
+          unit_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          birth_date?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_visit_at?: string | null
+          name: string
+          phone: string
+          tags?: string[] | null
+          total_visits?: number | null
+          unit_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          birth_date?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_visit_at?: string | null
+          name?: string
+          phone?: string
+          tags?: string[] | null
+          total_visits?: number | null
+          unit_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       companies: {
         Row: {

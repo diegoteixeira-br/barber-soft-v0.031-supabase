@@ -17,6 +17,7 @@ import type { Appointment, AppointmentFormData } from "@/hooks/useAppointments";
 const formSchema = z.object({
   client_name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100),
   client_phone: z.string().optional(),
+  client_birth_date: z.string().optional(),
   barber_id: z.string().min(1, "Selecione um barbeiro"),
   service_id: z.string().min(1, "Selecione um serviço"),
   date: z.string().min(1, "Selecione uma data"),
@@ -54,6 +55,7 @@ export function AppointmentFormModal({
     defaultValues: {
       client_name: "",
       client_phone: "",
+      client_birth_date: "",
       barber_id: "",
       service_id: "",
       date: "",
@@ -69,6 +71,7 @@ export function AppointmentFormModal({
         form.reset({
           client_name: appointment.client_name,
           client_phone: appointment.client_phone || "",
+          client_birth_date: appointment.client_birth_date || "",
           barber_id: appointment.barber_id || "",
           service_id: appointment.service_id || "",
           date: format(startDate, "yyyy-MM-dd"),
@@ -79,6 +82,7 @@ export function AppointmentFormModal({
         form.reset({
           client_name: "",
           client_phone: "",
+          client_birth_date: "",
           barber_id: initialBarberId || "",
           service_id: "",
           date: initialDate ? format(initialDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
@@ -97,6 +101,7 @@ export function AppointmentFormModal({
     onSubmit({
       client_name: values.client_name,
       client_phone: values.client_phone,
+      client_birth_date: values.client_birth_date,
       barber_id: values.barber_id,
       service_id: values.service_id,
       start_time: startTime,
@@ -141,6 +146,20 @@ export function AppointmentFormModal({
                   <FormLabel>Telefone</FormLabel>
                   <FormControl>
                     <Input placeholder="(11) 99999-9999" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="client_birth_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Data de Nascimento</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

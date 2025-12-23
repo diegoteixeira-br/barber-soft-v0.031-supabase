@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Phone, User, Scissors, Clock, DollarSign, Calendar, Edit, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Phone, User, Scissors, Clock, DollarSign, Calendar, Edit, Trash2, CheckCircle, XCircle, Cake } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -88,6 +88,13 @@ export function AppointmentDetailsModal({
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <span>{appointment.client_phone}</span>
+              </div>
+            )}
+
+            {appointment.client_birth_date && (
+              <div className="flex items-center gap-3 text-sm">
+                <Cake className="h-4 w-4 text-muted-foreground" />
+                <span>{format(new Date(appointment.client_birth_date), "dd/MM/yyyy")}</span>
               </div>
             )}
 

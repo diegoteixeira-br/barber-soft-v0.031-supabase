@@ -14,6 +14,7 @@ export interface Appointment {
   service_id: string | null;
   client_name: string;
   client_phone: string | null;
+  client_birth_date: string | null;
   start_time: string;
   end_time: string;
   status: AppointmentStatus;
@@ -36,6 +37,7 @@ export interface Appointment {
 export interface AppointmentFormData {
   client_name: string;
   client_phone?: string;
+  client_birth_date?: string;
   barber_id: string;
   service_id: string;
   start_time: Date;
@@ -104,6 +106,7 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
           service_id: data.service_id,
           client_name: data.client_name,
           client_phone: data.client_phone || null,
+          client_birth_date: data.client_birth_date || null,
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
           total_price: service.price,
@@ -131,6 +134,7 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
       
       if (data.client_name) updateData.client_name = data.client_name;
       if (data.client_phone !== undefined) updateData.client_phone = data.client_phone || null;
+      if (data.client_birth_date !== undefined) updateData.client_birth_date = data.client_birth_date || null;
       if (data.barber_id) updateData.barber_id = data.barber_id;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       
