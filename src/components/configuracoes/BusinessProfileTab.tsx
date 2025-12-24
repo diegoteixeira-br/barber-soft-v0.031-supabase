@@ -59,6 +59,7 @@ export function BusinessProfileTab() {
             <AvatarUpload
               currentImageUrl={formData.logo_url}
               onImageUploaded={(url) => setFormData(prev => ({ ...prev, logo_url: url }))}
+              onImageRemoved={() => setFormData(prev => ({ ...prev, logo_url: null }))}
               bucket="logos"
               folder="logos"
               fallbackIcon={<Building2 className="h-12 w-12 text-muted-foreground" />}

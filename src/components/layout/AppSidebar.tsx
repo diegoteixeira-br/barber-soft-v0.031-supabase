@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
+import { useBusinessSettings } from "@/hooks/useBusinessSettings";
 import {
   LayoutDashboard,
   Calendar,
@@ -33,7 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +60,7 @@ export function AppSidebar() {
   const { toast } = useToast();
   const { units } = useUnits();
   const { currentUnitId, setCurrentUnitId } = useCurrentUnit();
+  const { settings: businessSettings } = useBusinessSettings();
   const [user, setUser] = useState<User | null>(null);
 
   const selectedUnit = units.find((u) => u.id === currentUnitId) || units[0];
@@ -86,9 +88,16 @@ export function AppSidebar() {
     return user.email?.slice(0, 2).toUpperCase() || "??";
   };
 
-  const getUserDisplayName = () => {
-    if (!user) return "Usuário";
-    return user.user_metadata?.full_name || "Usuário";
+  const getBusinessInitials = () => {
+    const name = businessSettings?.business_name;
+    if (name) {
+      return name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+    }
+    return getUserInitials();
+  };
+
+  const getDisplayName = () => {
+    return businessSettings?.business_name || user?.user_metadata?.full_name || "Usuário";
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -184,11 +193,14 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-border p-4">
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9 border border-primary/30">
-            <AvatarFallback className="bg-primary/10 text-primary">{getUserInitials()}</AvatarFallback>
+            {businessSettings?.logo_url && (
+              <AvatarImage src={businessSettings.logo_url} alt="Logo" />
+            )}
+            <AvatarFallback className="bg-primary/10 text-primary">{getBusinessInitials()}</AvatarFallback>
           </Avatar>
           {!collapsed && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <span className="truncate text-sm font-medium">{getUserDisplayName()}</span>
+              <span className="truncate text-sm font-medium">{getDisplayName()}</span>
               <span className="truncate text-xs text-muted-foreground">{user?.email || ""}</span>
             </div>
           )}
