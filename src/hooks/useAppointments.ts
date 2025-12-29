@@ -44,6 +44,16 @@ export interface AppointmentFormData {
   notes?: string;
 }
 
+export interface QuickServiceFormData {
+  client_name: string;
+  client_phone?: string;
+  client_birth_date?: string;
+  barber_id: string;
+  service_id: string;
+  total_price: number;
+  notes?: string;
+}
+
 export function useAppointments(startDate?: Date, endDate?: Date, barberId?: string | null) {
   const { currentUnitId, currentCompanyId } = useCurrentUnit();
   const queryClient = useQueryClient();
@@ -236,6 +246,54 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
     },
   });
 
+  // Create quick service (already completed)
+  const createQuickService = useMutation({
+    mutationFn: async (data: QuickServiceFormData) => {
+      if (!currentUnitId) throw new Error("Nenhuma unidade selecionada");
+
+      // Get service to calculate end time
+      const { data: service, error: serviceError } = await supabase
+        .from("services")
+        .select("duration_minutes")
+        .eq("id", data.service_id)
+        .single();
+
+      if (serviceError) throw serviceError;
+
+      const now = new Date();
+      const endTime = new Date(now.getTime() + service.duration_minutes * 60000);
+
+      const { data: appointment, error } = await supabase
+        .from("appointments")
+        .insert({
+          unit_id: currentUnitId,
+          company_id: currentCompanyId,
+          barber_id: data.barber_id,
+          service_id: data.service_id,
+          client_name: data.client_name,
+          client_phone: data.client_phone || null,
+          client_birth_date: data.client_birth_date || null,
+          start_time: now.toISOString(),
+          end_time: endTime.toISOString(),
+          total_price: data.total_price,
+          notes: data.notes || null,
+          status: "completed", // Already completed!
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return appointment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      toast({ title: "Atendimento registrado com sucesso!" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao registrar atendimento", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     appointments: query.data || [],
     isLoading: query.isLoading,
@@ -244,5 +302,6 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
     updateAppointment,
     updateStatus,
     deleteAppointment,
+    createQuickService,
   };
 }

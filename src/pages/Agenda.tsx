@@ -7,7 +7,8 @@ import { CalendarDayView } from "@/components/agenda/CalendarDayView";
 import { CalendarMonthView } from "@/components/agenda/CalendarMonthView";
 import { AppointmentFormModal } from "@/components/agenda/AppointmentFormModal";
 import { AppointmentDetailsModal } from "@/components/agenda/AppointmentDetailsModal";
-import { useAppointments, type Appointment, type AppointmentFormData } from "@/hooks/useAppointments";
+import { QuickServiceModal } from "@/components/agenda/QuickServiceModal";
+import { useAppointments, type Appointment, type AppointmentFormData, type QuickServiceFormData } from "@/hooks/useAppointments";
 import { useBarbers } from "@/hooks/useBarbers";
 import { useServices } from "@/hooks/useServices";
 import { useCurrentUnit } from "@/contexts/UnitContext";
@@ -25,6 +26,7 @@ export default function Agenda() {
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [initialSlotDate, setInitialSlotDate] = useState<Date | undefined>();
   const [initialSlotBarberId, setInitialSlotBarberId] = useState<string | undefined>();
@@ -54,7 +56,8 @@ export default function Agenda() {
     createAppointment, 
     updateAppointment,
     updateStatus,
-    deleteAppointment 
+    deleteAppointment,
+    createQuickService,
   } = useAppointments(dateRange.start, dateRange.end, selectedBarberId);
 
   const isLoading = barbersLoading || servicesLoading || appointmentsLoading;
@@ -115,6 +118,11 @@ export default function Agenda() {
     }
   };
 
+  const handleQuickServiceSubmit = async (data: QuickServiceFormData) => {
+    await createQuickService.mutateAsync(data);
+    setIsQuickServiceModalOpen(false);
+  };
+
   return (
     <DashboardLayout>
       <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -127,6 +135,7 @@ export default function Agenda() {
           onViewChange={setView}
           onBarberChange={setSelectedBarberId}
           onNewAppointment={handleNewAppointment}
+          onQuickService={() => setIsQuickServiceModalOpen(true)}
         />
 
         {isLoading ? (
@@ -187,6 +196,15 @@ export default function Agenda() {
           onDelete={handleDelete}
           onStatusChange={handleStatusChange}
           isLoading={updateStatus.isPending || deleteAppointment.isPending}
+        />
+
+        <QuickServiceModal
+          open={isQuickServiceModalOpen}
+          onOpenChange={setIsQuickServiceModalOpen}
+          barbers={barbers}
+          services={services}
+          onSubmit={handleQuickServiceSubmit}
+          isLoading={createQuickService.isPending}
         />
       </div>
     </DashboardLayout>

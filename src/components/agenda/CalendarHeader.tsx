@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addDays, addWeeks, addMonths, subDays, subWeeks, subMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -16,6 +16,7 @@ interface CalendarHeaderProps {
   onViewChange: (view: CalendarViewType) => void;
   onBarberChange: (barberId: string | null) => void;
   onNewAppointment: () => void;
+  onQuickService: () => void;
 }
 
 export function CalendarHeader({
@@ -27,6 +28,7 @@ export function CalendarHeader({
   onViewChange,
   onBarberChange,
   onNewAppointment,
+  onQuickService,
 }: CalendarHeaderProps) {
   const navigate = (direction: "prev" | "next") => {
     const isNext = direction === "next";
@@ -112,6 +114,11 @@ export function CalendarHeader({
             ))}
           </SelectContent>
         </Select>
+
+        <Button variant="outline" onClick={onQuickService}>
+          <Zap className="h-4 w-4 mr-2" />
+          Atendimento Rápido
+        </Button>
 
         <Button onClick={onNewAppointment} className="bg-primary hover:bg-primary/90">
           <Plus className="h-4 w-4 mr-2" />
