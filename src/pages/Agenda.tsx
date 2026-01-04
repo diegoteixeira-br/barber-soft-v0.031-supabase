@@ -22,7 +22,6 @@ export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarViewType>("week");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
-  const [showCancelled, setShowCancelled] = useState(false);
   
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -61,7 +60,7 @@ export default function Agenda() {
     updateStatus,
     deleteAppointment,
     createQuickService,
-  } = useAppointments(dateRange.start, dateRange.end, selectedBarberId, showCancelled);
+  } = useAppointments(dateRange.start, dateRange.end, selectedBarberId);
 
   const isLoading = barbersLoading || servicesLoading || appointmentsLoading;
 
@@ -134,11 +133,9 @@ export default function Agenda() {
           view={view}
           barbers={barbers}
           selectedBarberId={selectedBarberId}
-          showCancelled={showCancelled}
           onDateChange={setCurrentDate}
           onViewChange={setView}
           onBarberChange={setSelectedBarberId}
-          onShowCancelledChange={setShowCancelled}
           onNewAppointment={handleNewAppointment}
           onQuickService={() => setIsQuickServiceModalOpen(true)}
           onRefresh={() => refetchAppointments()}

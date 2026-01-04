@@ -55,7 +55,7 @@ export interface QuickServiceFormData {
   notes?: string;
 }
 
-export function useAppointments(startDate?: Date, endDate?: Date, barberId?: string | null, includeCancelled: boolean = false) {
+export function useAppointments(startDate?: Date, endDate?: Date, barberId?: string | null) {
   const { currentUnitId, currentCompanyId } = useCurrentUnit();
   const queryClient = useQueryClient();
 
@@ -86,7 +86,7 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
   }, [currentUnitId, queryClient]);
 
   const query = useQuery({
-    queryKey: ["appointments", currentUnitId, startDate?.toISOString(), endDate?.toISOString(), barberId, includeCancelled],
+    queryKey: ["appointments", currentUnitId, startDate?.toISOString(), endDate?.toISOString(), barberId],
     queryFn: async () => {
       if (!currentUnitId) return [];
 
@@ -98,12 +98,8 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
           service:services(id, name, duration_minutes, price)
         `)
         .eq("unit_id", currentUnitId)
+        .neq("status", "cancelled")
         .order("start_time", { ascending: true });
-
-      // Filtrar cancelados apenas se não estiver mostrando todos
-      if (!includeCancelled) {
-        queryBuilder = queryBuilder.neq("status", "cancelled");
-      }
 
       if (startDate) {
         queryBuilder = queryBuilder.gte("start_time", startDate.toISOString());
