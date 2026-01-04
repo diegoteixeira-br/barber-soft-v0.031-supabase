@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.send-marketing-campaign]
 verify_jwt = false
+
+[functions.elevenlabs-tts]
+verify_jwt = false
+
+[functions.n8n-get-shop-info]
+verify_jwt = false
