@@ -248,7 +248,7 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
   const rawPhone = body.telefone || body.client_phone;
   // Normalizar telefone - remover caracteres especiais para consistência
   const clientPhone = rawPhone?.replace(/\D/g, '') || null;
-  const dateTime = body.data || body.datetime;
+  const dateTime = body.data || body.datetime || body.date;
   const barberName = body.barbeiro_nome || body.professional;
   const serviceName = body.servico || body.service;
   const { unit_id, company_id } = body;
@@ -322,7 +322,6 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
 
         if (updateError) {
           console.error('Erro ao atualizar cliente:', updateError);
-          // Não bloquear, usar dados existentes
           clientData = existingClient;
         } else {
           console.log('Cliente atualizado com sucesso:', updatedClient);
@@ -332,7 +331,7 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
         clientData = existingClient;
       }
     } else {
-      // Criar novo cliente com todos os dados - BLOQUEAR se falhar
+      // Criar novo cliente com telefone
       console.log(`Criando novo cliente: ${clientName} - ${clientPhone}`);
       const { data: newClient, error: clientCreateError } = await supabase
         .from('clients')
@@ -363,6 +362,56 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
       console.log('Novo cliente criado com sucesso:', newClient);
       clientData = newClient;
       clientCreated = true;
+    }
+  } else if (clientName) {
+    // === SEM TELEFONE: Buscar por nome + data nascimento ===
+    console.log(`Cliente sem telefone, buscando por nome: ${clientName}`);
+    
+    let clientQuery = supabase
+      .from('clients')
+      .select('id, name, phone, birth_date, notes, tags, total_visits')
+      .eq('unit_id', unit_id)
+      .ilike('name', clientName);
+    
+    if (clientBirthDate) {
+      clientQuery = clientQuery.eq('birth_date', clientBirthDate);
+    }
+    
+    const { data: existingClient, error: clientFetchError } = await clientQuery.maybeSingle();
+
+    if (clientFetchError) {
+      console.error('Error fetching client by name:', clientFetchError);
+    }
+
+    if (existingClient) {
+      console.log('Cliente encontrado por nome:', existingClient);
+      clientData = existingClient;
+    } else {
+      // Criar cliente SEM telefone
+      console.log(`Criando novo cliente sem telefone: ${clientName}`);
+      const { data: newClient, error: clientCreateError } = await supabase
+        .from('clients')
+        .insert({
+          unit_id,
+          company_id: company_id || null,
+          name: clientName,
+          phone: null,
+          birth_date: clientBirthDate,
+          notes: clientNotes,
+          tags: clientTags,
+          total_visits: 0
+        })
+        .select('id, name, phone, birth_date, notes, tags, total_visits')
+        .single();
+
+      if (clientCreateError) {
+        console.error('Erro ao criar cliente sem telefone:', clientCreateError);
+        // Não bloquear agendamento se falhar cadastro sem telefone
+      } else {
+        console.log('Novo cliente (sem telefone) criado:', newClient);
+        clientData = newClient;
+        clientCreated = true;
+      }
     }
   }
 
