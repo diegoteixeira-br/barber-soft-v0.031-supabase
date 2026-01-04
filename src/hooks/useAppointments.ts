@@ -324,6 +324,8 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
   return {
     appointments: query.data || [],
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
     error: query.error,
     createAppointment,
     updateAppointment,

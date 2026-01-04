@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, Calendar, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar, Zap, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addDays, addWeeks, addMonths, subDays, subWeeks, subMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -17,6 +17,8 @@ interface CalendarHeaderProps {
   onBarberChange: (barberId: string | null) => void;
   onNewAppointment: () => void;
   onQuickService: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export function CalendarHeader({
@@ -29,6 +31,8 @@ export function CalendarHeader({
   onBarberChange,
   onNewAppointment,
   onQuickService,
+  onRefresh,
+  isRefreshing,
 }: CalendarHeaderProps) {
   const navigate = (direction: "prev" | "next") => {
     const isNext = direction === "next";
@@ -76,6 +80,17 @@ export function CalendarHeader({
         <Button variant="ghost" onClick={goToToday} className="hidden sm:flex">
           Hoje
         </Button>
+        {onRefresh && (
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            title="Atualizar agenda"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
         <h2 className="text-lg font-semibold capitalize ml-2">{getDateRangeLabel()}</h2>
       </div>
 

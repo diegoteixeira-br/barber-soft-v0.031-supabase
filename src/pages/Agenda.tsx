@@ -52,7 +52,9 @@ export default function Agenda() {
   const { services, isLoading: servicesLoading } = useServices(currentUnitId);
   const { 
     appointments, 
-    isLoading: appointmentsLoading, 
+    isLoading: appointmentsLoading,
+    isFetching: appointmentsFetching,
+    refetch: refetchAppointments,
     createAppointment, 
     updateAppointment,
     updateStatus,
@@ -136,6 +138,8 @@ export default function Agenda() {
           onBarberChange={setSelectedBarberId}
           onNewAppointment={handleNewAppointment}
           onQuickService={() => setIsQuickServiceModalOpen(true)}
+          onRefresh={() => refetchAppointments()}
+          isRefreshing={appointmentsFetching}
         />
 
         {isLoading ? (
