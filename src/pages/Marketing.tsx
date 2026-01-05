@@ -1,7 +1,8 @@
-import { Megaphone, Zap } from "lucide-react";
+import { Megaphone, Zap, History } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignsTab } from "@/components/marketing/CampaignsTab";
+import { CampaignHistoryTab } from "@/components/marketing/CampaignHistoryTab";
 import { AutomationsTab } from "@/components/marketing/AutomationsTab";
 
 export default function Marketing() {
@@ -16,10 +17,14 @@ export default function Marketing() {
         </div>
 
         <Tabs defaultValue="campaigns" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <Megaphone className="h-4 w-4" />
               Campanhas
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Histórico
             </TabsTrigger>
             <TabsTrigger value="automations" className="flex items-center gap-2">
               <Zap className="h-4 w-4" />
@@ -29,6 +34,10 @@ export default function Marketing() {
 
           <TabsContent value="campaigns" className="mt-6">
             <CampaignsTab />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-6">
+            <CampaignHistoryTab />
           </TabsContent>
 
           <TabsContent value="automations" className="mt-6">
