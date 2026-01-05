@@ -3,12 +3,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
+import { Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ClientCombobox } from "@/components/clients/ClientCombobox";
 import { ClientFormModal } from "@/components/clients/ClientFormModal";
 import { useClients, CreateClientData, Client } from "@/hooks/useClients";
@@ -39,7 +41,9 @@ interface AppointmentFormModalProps {
   initialBarberId?: string;
   appointment?: Appointment | null;
   onSubmit: (data: AppointmentFormData) => void;
+  onDelete?: () => void;
   isLoading?: boolean;
+  isDeleting?: boolean;
 }
 
 export function AppointmentFormModal({
@@ -51,7 +55,9 @@ export function AppointmentFormModal({
   initialBarberId,
   appointment,
   onSubmit,
+  onDelete,
   isLoading,
+  isDeleting,
 }: AppointmentFormModalProps) {
   const { clients, createClient } = useClients();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -156,6 +162,7 @@ export function AppointmentFormModal({
   const selectedService = services.find(s => s.id === form.watch("service_id"));
   const activeBarbers = barbers.filter(b => b.is_active);
   const activeServices = services.filter(s => s.is_active);
+  const isEditMode = !!appointment;
 
   return (
     <>
@@ -304,13 +311,41 @@ export function AppointmentFormModal({
                 )}
               />
 
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Salvando..." : appointment ? "Atualizar" : "Criar Agendamento"}
-                </Button>
+              <div className="flex justify-between gap-3 pt-4">
+                <div>
+                  {isEditMode && onDelete && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="destructive" disabled={isDeleting}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          {isDeleting ? "Excluindo..." : "Excluir"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir agendamento?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta ação não pode ser desfeita. O agendamento será permanentemente excluído.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={onDelete} className="bg-destructive hover:bg-destructive/90">
+                            Excluir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? "Salvando..." : appointment ? "Atualizar" : "Criar Agendamento"}
+                  </Button>
+                </div>
               </div>
             </form>
           </Form>

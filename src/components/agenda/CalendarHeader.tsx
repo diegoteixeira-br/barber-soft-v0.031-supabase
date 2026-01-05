@@ -1,7 +1,8 @@
-import { ChevronLeft, ChevronRight, Plus, Calendar, Zap, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar, Zap, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { format, addDays, addWeeks, addMonths, subDays, subWeeks, subMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { Toggle } from "@/components/ui/toggle";
+import { format, addDays, addWeeks, addMonths, subDays, subWeeks, subMonths, startOfWeek, endOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Barber } from "@/hooks/useBarbers";
 
@@ -12,9 +13,11 @@ interface CalendarHeaderProps {
   view: CalendarViewType;
   barbers: Barber[];
   selectedBarberId: string | null;
+  showCancelled?: boolean;
   onDateChange: (date: Date) => void;
   onViewChange: (view: CalendarViewType) => void;
   onBarberChange: (barberId: string | null) => void;
+  onShowCancelledChange?: (show: boolean) => void;
   onNewAppointment: () => void;
   onQuickService: () => void;
   onRefresh?: () => void;
@@ -26,9 +29,11 @@ export function CalendarHeader({
   view,
   barbers,
   selectedBarberId,
+  showCancelled = false,
   onDateChange,
   onViewChange,
   onBarberChange,
+  onShowCancelledChange,
   onNewAppointment,
   onQuickService,
   onRefresh,
@@ -95,6 +100,19 @@ export function CalendarHeader({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
+        {onShowCancelledChange && (
+          <Toggle
+            pressed={showCancelled}
+            onPressedChange={onShowCancelledChange}
+            aria-label="Mostrar cancelados"
+            title={showCancelled ? "Ocultar cancelados" : "Mostrar cancelados"}
+            className="gap-1.5"
+          >
+            {showCancelled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            <span className="hidden sm:inline text-xs">Cancelados</span>
+          </Toggle>
+        )}
+
         <Select value={view} onValueChange={(v) => onViewChange(v as CalendarViewType)}>
           <SelectTrigger className="w-[120px]">
             <Calendar className="h-4 w-4 mr-2" />

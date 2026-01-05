@@ -22,6 +22,7 @@ export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarViewType>("week");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
+  const [showCancelled, setShowCancelled] = useState(false);
   
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -51,7 +52,7 @@ export default function Agenda() {
   const { barbers, isLoading: barbersLoading } = useBarbers(currentUnitId);
   const { services, isLoading: servicesLoading } = useServices(currentUnitId);
   const { 
-    appointments, 
+    appointments: allAppointments, 
     isLoading: appointmentsLoading,
     isFetching: appointmentsFetching,
     refetch: refetchAppointments,
@@ -61,6 +62,14 @@ export default function Agenda() {
     deleteAppointment,
     createQuickService,
   } = useAppointments(dateRange.start, dateRange.end, selectedBarberId);
+
+  // Filter appointments based on showCancelled toggle
+  const appointments = useMemo(() => {
+    if (showCancelled) {
+      return allAppointments;
+    }
+    return allAppointments.filter(apt => apt.status !== 'cancelled');
+  }, [allAppointments, showCancelled]);
 
   const isLoading = barbersLoading || servicesLoading || appointmentsLoading;
 
@@ -120,6 +129,14 @@ export default function Agenda() {
     }
   };
 
+  const handleDeleteFromForm = async () => {
+    if (selectedAppointment) {
+      await deleteAppointment.mutateAsync(selectedAppointment.id);
+      setIsFormModalOpen(false);
+      setSelectedAppointment(null);
+    }
+  };
+
   const handleQuickServiceSubmit = async (data: QuickServiceFormData) => {
     await createQuickService.mutateAsync(data);
     setIsQuickServiceModalOpen(false);
@@ -133,9 +150,11 @@ export default function Agenda() {
           view={view}
           barbers={barbers}
           selectedBarberId={selectedBarberId}
+          showCancelled={showCancelled}
           onDateChange={setCurrentDate}
           onViewChange={setView}
           onBarberChange={setSelectedBarberId}
+          onShowCancelledChange={setShowCancelled}
           onNewAppointment={handleNewAppointment}
           onQuickService={() => setIsQuickServiceModalOpen(true)}
           onRefresh={() => refetchAppointments()}
@@ -189,7 +208,9 @@ export default function Agenda() {
           initialBarberId={initialSlotBarberId}
           appointment={selectedAppointment}
           onSubmit={handleFormSubmit}
+          onDelete={handleDeleteFromForm}
           isLoading={createAppointment.isPending || updateAppointment.isPending}
+          isDeleting={deleteAppointment.isPending}
         />
 
         <AppointmentDetailsModal

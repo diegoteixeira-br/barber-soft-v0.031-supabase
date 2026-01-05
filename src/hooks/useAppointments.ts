@@ -85,6 +85,7 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
     };
   }, [currentUnitId, queryClient]);
 
+  // Fetch ALL appointments including cancelled (we filter on the frontend for toggle)
   const query = useQuery({
     queryKey: ["appointments", currentUnitId, startDate?.toISOString(), endDate?.toISOString(), barberId],
     queryFn: async () => {
@@ -98,7 +99,6 @@ export function useAppointments(startDate?: Date, endDate?: Date, barberId?: str
           service:services(id, name, duration_minutes, price)
         `)
         .eq("unit_id", currentUnitId)
-        .neq("status", "cancelled")
         .order("start_time", { ascending: true });
 
       if (startDate) {

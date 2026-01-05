@@ -23,18 +23,54 @@ function getTimezoneOffset(timezone: string): string {
   return offsets[timezone] || '-03:00'; // Default: Brasília
 }
 
+// Normaliza input de datetime - SEMPRE trata como horário LOCAL (remove qualquer timezone)
+function normalizeLocalDateTimeInput(dateTimeStr: string): string {
+  if (!dateTimeStr) return dateTimeStr;
+  
+  // Remover timezone info (Z, +00:00, -03:00, etc.) para tratar como local
+  let normalized = dateTimeStr
+    .replace(/Z$/, '')
+    .replace(/[+-]\d{2}:\d{2}$/, '')
+    .replace(/\.\d{3}$/, ''); // Remover milissegundos
+  
+  console.log(`normalizeLocalDateTimeInput: "${dateTimeStr}" -> "${normalized}"`);
+  return normalized;
+}
+
 // Converte uma data local (sem timezone) para UTC baseado no timezone da unidade
 function convertLocalToUTC(dateTimeStr: string, timezone: string): Date {
-  // Se já tem timezone info (Z ou +/-), usar direto
-  if (dateTimeStr.includes('Z') || /[+-]\d{2}:\d{2}$/.test(dateTimeStr)) {
-    return new Date(dateTimeStr);
-  }
+  // Primeiro normalizar para remover qualquer timezone
+  const normalizedDateTime = normalizeLocalDateTimeInput(dateTimeStr);
   
-  // Caso contrário, interpretar como horário local da unidade
+  // Adicionar o offset do timezone da unidade
   const offset = getTimezoneOffset(timezone);
-  const localDateTime = `${dateTimeStr}${offset}`;
-  console.log(`Converting local time: ${dateTimeStr} with offset ${offset} -> ${localDateTime}`);
-  return new Date(localDateTime);
+  const localDateTime = `${normalizedDateTime}${offset}`;
+  
+  console.log(`convertLocalToUTC: "${dateTimeStr}" -> normalized: "${normalizedDateTime}" -> with offset ${offset}: "${localDateTime}"`);
+  
+  const result = new Date(localDateTime);
+  console.log(`convertLocalToUTC result: ${result.toISOString()}`);
+  
+  return result;
+}
+
+// Calcula início e fim do dia em UTC baseado no timezone local
+function getDayBoundsInUTC(dateStr: string, timezone: string): { startUTC: string; endUTC: string } {
+  // dateStr pode ser "2026-01-05" ou "2026-01-05T10:00:00Z" etc.
+  const dateOnly = dateStr.split('T')[0]; // Pegar apenas YYYY-MM-DD
+  
+  const startLocal = `${dateOnly}T00:00:00`;
+  const endLocal = `${dateOnly}T23:59:59`;
+  
+  const startUTC = convertLocalToUTC(startLocal, timezone);
+  const endUTC = convertLocalToUTC(endLocal, timezone);
+  
+  console.log(`getDayBoundsInUTC: ${dateOnly} (${timezone}) -> ${startUTC.toISOString()} to ${endUTC.toISOString()}`);
+  
+  return {
+    startUTC: startUTC.toISOString(),
+    endUTC: endUTC.toISOString()
+  };
 }
 
 serve(async (req) => {
@@ -69,6 +105,7 @@ serve(async (req) => {
     // Se instance_name for fornecido, buscar a unidade diretamente por ele
     let resolvedUnitId = body.unit_id;
     let companyId = null;
+    let unitTimezone = 'America/Sao_Paulo'; // default
     
     if (instance_name && !resolvedUnitId) {
       console.log(`Looking up unit by instance_name: ${instance_name}`);
@@ -76,7 +113,7 @@ serve(async (req) => {
       // Busca direto na tabela units pelo evolution_instance_name
       const { data: unit, error: unitError } = await supabase
         .from('units')
-        .select('id, company_id')
+        .select('id, company_id, timezone')
         .eq('evolution_instance_name', instance_name)
         .maybeSingle();
       
@@ -98,11 +135,12 @@ serve(async (req) => {
       
       resolvedUnitId = unit.id;
       companyId = unit.company_id;
-      console.log(`Resolved unit_id: ${resolvedUnitId}, company_id: ${companyId}`);
+      unitTimezone = unit.timezone || 'America/Sao_Paulo';
+      console.log(`Resolved unit_id: ${resolvedUnitId}, company_id: ${companyId}, timezone: ${unitTimezone}`);
     }
 
     // Passar o unit_id resolvido para os handlers
-    const enrichedBody = { ...body, unit_id: resolvedUnitId, company_id: companyId };
+    const enrichedBody = { ...body, unit_id: resolvedUnitId, company_id: companyId, unit_timezone: unitTimezone };
 
     switch (action) {
       // Consultar disponibilidade (alias: check_availability)
@@ -146,7 +184,8 @@ serve(async (req) => {
 
 // Handler para consultar disponibilidade
 async function handleCheck(supabase: any, body: any, corsHeaders: any) {
-  const { date, professional, unit_id } = body;
+  const { date, professional, unit_id, unit_timezone } = body;
+  const timezone = unit_timezone || 'America/Sao_Paulo';
 
   if (!date) {
     return new Response(
@@ -162,7 +201,7 @@ async function handleCheck(supabase: any, body: any, corsHeaders: any) {
     );
   }
 
-  console.log(`Checking availability for date: ${date}, professional: ${professional || 'any'}, unit: ${unit_id}`);
+  console.log(`Checking availability for date: ${date}, professional: ${professional || 'any'}, unit: ${unit_id}, timezone: ${timezone}`);
 
   // Buscar barbeiros ativos da unidade
   let barbersQuery = supabase
@@ -210,16 +249,15 @@ async function handleCheck(supabase: any, body: any, corsHeaders: any) {
     console.error('Error fetching services:', servicesError);
   }
 
-  // Buscar agendamentos do dia (exceto cancelados)
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59`;
+  // Buscar agendamentos do dia (exceto cancelados) - usar timezone correto
+  const { startUTC, endUTC } = getDayBoundsInUTC(date, timezone);
 
   const { data: appointments, error: appointmentsError } = await supabase
     .from('appointments')
     .select('id, barber_id, start_time, end_time, status')
     .eq('unit_id', unit_id)
-    .gte('start_time', startOfDay)
-    .lte('start_time', endOfDay)
+    .gte('start_time', startUTC)
+    .lte('start_time', endUTC)
     .neq('status', 'cancelled');
 
   if (appointmentsError) {
@@ -232,11 +270,13 @@ async function handleCheck(supabase: any, body: any, corsHeaders: any) {
   const availableSlots: any[] = [];
   const openingHour = 8;
   const closingHour = 21;
+  const dateOnly = date.split('T')[0];
 
   for (let hour = openingHour; hour < closingHour; hour++) {
     for (let minute = 0; minute < 60; minute += 30) {
       const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      const slotStart = new Date(`${date}T${timeStr}:00`);
+      const slotLocalStr = `${dateOnly}T${timeStr}:00`;
+      const slotStart = convertLocalToUTC(slotLocalStr, timezone);
 
       for (const barber of barbers) {
         // Verificar se o barbeiro está ocupado neste horário
@@ -282,7 +322,8 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
   const dateTime = body.data || body.datetime || body.date;
   const barberName = body.barbeiro_nome || body.professional;
   const serviceName = body.servico || body.service;
-  const { unit_id, company_id } = body;
+  const { unit_id, company_id, unit_timezone } = body;
+  const timezone = unit_timezone || 'America/Sao_Paulo';
 
   // NOVOS CAMPOS para cadastro completo do cliente
   const clientBirthDate = body.data_nascimento || body.birth_date || null;
@@ -300,21 +341,23 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
     );
   }
 
-  // Buscar timezone da unidade
-  const { data: unitData, error: unitTimezoneError } = await supabase
-    .from('units')
-    .select('timezone')
-    .eq('id', unit_id)
-    .single();
+  // Se unit_timezone não veio do enrichedBody, buscar da unidade
+  let finalTimezone = timezone;
+  if (!unit_timezone) {
+    const { data: unitData, error: unitTimezoneError } = await supabase
+      .from('units')
+      .select('timezone')
+      .eq('id', unit_id)
+      .single();
 
-  if (unitTimezoneError) {
-    console.error('Error fetching unit timezone:', unitTimezoneError);
+    if (unitTimezoneError) {
+      console.error('Error fetching unit timezone:', unitTimezoneError);
+    }
+    finalTimezone = unitData?.timezone || 'America/Sao_Paulo';
   }
 
-  const unitTimezone = unitData?.timezone || 'America/Sao_Paulo';
-  console.log(`Unit timezone: ${unitTimezone}`);
-
   console.log(`Creating appointment: ${clientName} with ${barberName} for ${serviceName} at ${dateTime}`);
+  console.log(`Unit timezone: ${finalTimezone}`);
   console.log(`Normalized phone: ${clientPhone}`);
   console.log(`Extra client data - birth_date: ${clientBirthDate}, notes: ${clientNotes}, tags: ${JSON.stringify(clientTags)}`);
 
@@ -501,11 +544,13 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
   console.log('Found service:', selectedService);
 
   // Calcular end_time - converter para UTC baseado no timezone da unidade
-  const startTime = convertLocalToUTC(dateTime, unitTimezone);
+  // IMPORTANTE: Sempre tratar dateTime como horário LOCAL
+  const startTime = convertLocalToUTC(dateTime, finalTimezone);
   const endTime = new Date(startTime.getTime() + selectedService.duration_minutes * 60000);
   
-  console.log(`Converted start_time: ${dateTime} -> ${startTime.toISOString()} (UTC)`);
-  console.log(`Calculated end_time: ${endTime.toISOString()} (UTC)`);
+  console.log(`Input datetime: ${dateTime}`);
+  console.log(`Converted start_time (UTC): ${startTime.toISOString()}`);
+  console.log(`Calculated end_time (UTC): ${endTime.toISOString()}`);
 
   // Verificar se o horário está disponível
   const { data: conflictingApts, error: conflictError } = await supabase
@@ -596,7 +641,8 @@ async function handleCancel(supabase: any, body: any, corsHeaders: any) {
   // Normalizar telefone - remover caracteres especiais para consistência
   const clientPhone = rawPhone?.replace(/\D/g, '') || null;
   const targetDate = body.data || body.datetime;
-  const { unit_id } = body;
+  const { unit_id, unit_timezone } = body;
+  const timezone = unit_timezone || 'America/Sao_Paulo';
 
   if (!unit_id) {
     return new Response(
@@ -612,7 +658,7 @@ async function handleCancel(supabase: any, body: any, corsHeaders: any) {
     );
   }
 
-  console.log(`Cancelling appointment: id=${appointmentId}, phone=${clientPhone}, date=${targetDate}, unit=${unit_id}`);
+  console.log(`Cancelling appointment: id=${appointmentId}, phone=${clientPhone}, date=${targetDate}, unit=${unit_id}, timezone=${timezone}`);
 
   // Se temos appointment_id, cancelar diretamente
   if (appointmentId) {
@@ -654,24 +700,23 @@ async function handleCancel(supabase: any, body: any, corsHeaders: any) {
   // Se temos telefone, buscar agendamento
   let query = supabase
     .from('appointments')
-    .select('id, client_name, start_time, status')
+    .select('id, client_name, start_time, status, created_at')
     .eq('unit_id', unit_id)
     .eq('client_phone', clientPhone)
     .in('status', ['pending', 'confirmed']);
 
-  // Se data específica foi fornecida, filtrar por ela
+  // Se data específica foi fornecida, filtrar por ela usando timezone correto
   if (targetDate) {
-    const dateOnly = targetDate.split('T')[0]; // Pegar apenas YYYY-MM-DD
-    const startOfDay = `${dateOnly}T00:00:00`;
-    const endOfDay = `${dateOnly}T23:59:59`;
-    query = query.gte('start_time', startOfDay).lte('start_time', endOfDay);
-    console.log(`Filtering by date range: ${startOfDay} to ${endOfDay}`);
+    const { startUTC, endUTC } = getDayBoundsInUTC(targetDate, timezone);
+    query = query.gte('start_time', startUTC).lte('start_time', endUTC);
+    console.log(`Filtering by date range (UTC): ${startUTC} to ${endUTC}`);
   } else {
     // Comportamento original: próximo agendamento futuro
     query = query.gte('start_time', new Date().toISOString());
   }
 
-  query = query.order('start_time', { ascending: true }).limit(1);
+  // Ordenar pelo start_time mais antigo E criado há mais tempo (para não cancelar agendamentos recém-criados)
+  query = query.order('start_time', { ascending: true }).order('created_at', { ascending: true }).limit(1);
 
   const { data: foundAppointment, error: findError } = await query;
 
@@ -686,13 +731,31 @@ async function handleCancel(supabase: any, body: any, corsHeaders: any) {
     );
   }
 
-  console.log('Found appointment to cancel:', foundAppointment[0]);
+  const appointmentToCancel = foundAppointment[0];
+  
+  // Proteção contra cancelar agendamentos recém-criados (menos de 5 segundos)
+  const createdAt = new Date(appointmentToCancel.created_at);
+  const now = new Date();
+  const secondsSinceCreation = (now.getTime() - createdAt.getTime()) / 1000;
+  
+  if (secondsSinceCreation < 5) {
+    console.log(`Skipping recently created appointment (${secondsSinceCreation}s ago):`, appointmentToCancel.id);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: 'Agendamento muito recente, aguarde alguns segundos e tente novamente' 
+      }),
+      { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  console.log('Found appointment to cancel:', appointmentToCancel);
 
   // Cancelar o agendamento encontrado
   const { data: cancelled, error: cancelError } = await supabase
     .from('appointments')
     .update({ status: 'cancelled' })
-    .eq('id', foundAppointment[0].id)
+    .eq('id', appointmentToCancel.id)
     .select();
 
   if (cancelError) {
@@ -718,10 +781,9 @@ async function handleCancel(supabase: any, body: any, corsHeaders: any) {
 // Handler para consultar cliente pelo telefone
 async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
   const rawPhone = body.telefone || body.client_phone;
+  // Normalizar telefone - remover caracteres especiais
   const clientPhone = rawPhone?.replace(/\D/g, '') || null;
   const { unit_id } = body;
-
-  console.log(`Checking client: phone=${clientPhone}, unit=${unit_id}`);
 
   if (!clientPhone) {
     return new Response(
@@ -737,40 +799,40 @@ async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
     );
   }
 
-  const { data: client, error } = await supabase
+  console.log(`Checking client with phone: ${clientPhone}, unit: ${unit_id}`);
+
+  const { data: client, error: clientError } = await supabase
     .from('clients')
-    .select('id, name, phone, birth_date, notes, tags, total_visits, last_visit_at')
+    .select('id, name, phone, birth_date, notes, tags, total_visits, last_visit_at, created_at')
     .eq('unit_id', unit_id)
     .eq('phone', clientPhone)
     .maybeSingle();
 
-  if (error) {
-    console.error('Error checking client:', error);
+  if (clientError) {
+    console.error('Error fetching client:', clientError);
     return new Response(
-      JSON.stringify({ success: false, error: 'Erro ao buscar cliente' }),
+      JSON.stringify({ success: false, error: 'Erro ao consultar cliente' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   if (!client) {
-    console.log('Cliente não encontrado para o telefone:', clientPhone);
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         found: false,
-        message: 'Cliente não encontrado' 
+        message: 'Cliente não encontrado'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
-  console.log('Cliente encontrado:', client);
+  console.log('Client found:', client);
 
   return new Response(
     JSON.stringify({
       success: true,
       found: true,
-      message: 'Cliente encontrado',
       client: {
         id: client.id,
         name: client.name,
@@ -779,15 +841,17 @@ async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
         notes: client.notes,
         tags: client.tags,
         total_visits: client.total_visits,
-        last_visit_at: client.last_visit_at
+        last_visit_at: client.last_visit_at,
+        created_at: client.created_at
       }
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
 
-// Handler para cadastrar novo cliente (sem agendamento)
+// Handler para cadastrar novo cliente (sem criar agendamento)
 async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) {
+  // Normalizar campos
   const clientName = body.nome || body.client_name;
   const rawPhone = body.telefone || body.client_phone;
   const clientPhone = rawPhone?.replace(/\D/g, '') || null;
@@ -796,12 +860,10 @@ async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) 
   const clientTags = body.tags || ['Novo'];
   const { unit_id, company_id } = body;
 
-  console.log(`Registering client: name=${clientName}, phone=${clientPhone}, unit=${unit_id}`);
-  console.log(`Client details - birth_date: ${clientBirthDate}, notes: ${clientNotes}, tags: ${JSON.stringify(clientTags)}`);
-
-  if (!clientName || !clientPhone) {
+  // Validações
+  if (!clientName) {
     return new Response(
-      JSON.stringify({ success: false, error: 'Nome e telefone são obrigatórios' }),
+      JSON.stringify({ success: false, error: 'Nome é obrigatório' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -813,42 +875,39 @@ async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) 
     );
   }
 
-  // Verificar se cliente já existe
-  const { data: existingClient, error: checkError } = await supabase
-    .from('clients')
-    .select('id, name, phone, birth_date, notes, tags')
-    .eq('unit_id', unit_id)
-    .eq('phone', clientPhone)
-    .maybeSingle();
+  console.log(`Registering client: ${clientName}, phone: ${clientPhone}, unit: ${unit_id}`);
 
-  if (checkError) {
-    console.error('Error checking existing client:', checkError);
-    return new Response(
-      JSON.stringify({ success: false, error: 'Erro ao verificar cliente' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  // Verificar se cliente já existe (se tiver telefone)
+  if (clientPhone) {
+    const { data: existingClient, error: checkError } = await supabase
+      .from('clients')
+      .select('id, name, phone')
+      .eq('unit_id', unit_id)
+      .eq('phone', clientPhone)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing client:', checkError);
+    }
+
+    if (existingClient) {
+      console.log('Client already exists:', existingClient);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Cliente já cadastrado com este telefone',
+          existing_client: {
+            id: existingClient.id,
+            name: existingClient.name,
+            phone: existingClient.phone
+          }
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   }
 
-  if (existingClient) {
-    console.log('Cliente já existe:', existingClient);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Cliente já cadastrado com este telefone',
-        existing_client: {
-          id: existingClient.id,
-          name: existingClient.name,
-          phone: existingClient.phone,
-          birth_date: existingClient.birth_date,
-          notes: existingClient.notes,
-          tags: existingClient.tags
-        }
-      }),
-      { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Criar novo cliente
+  // Criar o cliente
   const { data: newClient, error: createError } = await supabase
     .from('clients')
     .insert({
@@ -861,7 +920,7 @@ async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) 
       tags: clientTags,
       total_visits: 0
     })
-    .select('id, name, phone, birth_date, notes, tags, total_visits')
+    .select('id, name, phone, birth_date, notes, tags, total_visits, created_at')
     .single();
 
   if (createError) {
@@ -872,7 +931,7 @@ async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) 
     );
   }
 
-  console.log('Novo cliente cadastrado com sucesso:', newClient);
+  console.log('Client registered:', newClient);
 
   return new Response(
     JSON.stringify({
@@ -885,7 +944,8 @@ async function handleRegisterClient(supabase: any, body: any, corsHeaders: any) 
         birth_date: newClient.birth_date,
         notes: newClient.notes,
         tags: newClient.tags,
-        total_visits: newClient.total_visits
+        total_visits: newClient.total_visits,
+        created_at: newClient.created_at
       }
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
