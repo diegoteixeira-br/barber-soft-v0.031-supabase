@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, Users, Cake, UserX, Search, CheckSquare, Square, Building2, Settings, Save } from "lucide-react";
+import { Send, Users, Cake, UserX, Search, CheckSquare, Square, Building2, Settings, Save, Scissors } from "lucide-react";
 import { MessageTemplatesModal } from "./MessageTemplatesModal";
 import { TemplateSelector } from "./TemplateSelector";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
@@ -11,11 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/hooks/use-toast";
 import { useClients, type ClientFilter } from "@/hooks/useClients";
 import { useUnits } from "@/hooks/useUnits";
+import { useBarbers } from "@/hooks/useBarbers";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+
+type RecipientType = "clients" | "barbers";
 
 const filterOptions = [
   { value: "all", label: "Todos os Clientes", icon: Users },
@@ -24,9 +29,11 @@ const filterOptions = [
 ];
 
 export function CampaignsTab() {
+  const [recipientType, setRecipientType] = useState<RecipientType>("clients");
   const [filter, setFilter] = useState<ClientFilter>("all");
   const [unitFilter, setUnitFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedBarberIds, setSelectedBarberIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -34,17 +41,26 @@ export function CampaignsTab() {
 
   const { createTemplate } = useMessageTemplates();
   const { units } = useUnits();
-  const { clients, isLoading } = useClients({
+  const { clients, isLoading: clientsLoading } = useClients({
     filter,
     unitIdFilter: unitFilter === "all" ? null : unitFilter,
   });
+  const { barbers, isLoading: barbersLoading } = useBarbers(unitFilter === "all" ? null : unitFilter);
 
   const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.phone.includes(searchTerm)
   );
 
+  const filteredBarbers = barbers
+    .filter((barber) => barber.phone)
+    .filter((barber) =>
+      barber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      barber.phone?.includes(searchTerm)
+    );
+
   const showUnitBadge = unitFilter === "all" && units.length > 1;
+  const isLoading = recipientType === "clients" ? clientsLoading : barbersLoading;
 
   const toggleSelection = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -56,17 +72,38 @@ export function CampaignsTab() {
     setSelectedIds(newSelected);
   };
 
-  const selectAll = () => {
-    if (selectedIds.size === filteredClients.length) {
-      setSelectedIds(new Set());
+  const toggleBarberSelection = (id: string) => {
+    const newSelected = new Set(selectedBarberIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
     } else {
-      setSelectedIds(new Set(filteredClients.map((c) => c.id)));
+      newSelected.add(id);
+    }
+    setSelectedBarberIds(newSelected);
+  };
+
+  const selectAll = () => {
+    if (recipientType === "clients") {
+      if (selectedIds.size === filteredClients.length) {
+        setSelectedIds(new Set());
+      } else {
+        setSelectedIds(new Set(filteredClients.map((c) => c.id)));
+      }
+    } else {
+      if (selectedBarberIds.size === filteredBarbers.length) {
+        setSelectedBarberIds(new Set());
+      } else {
+        setSelectedBarberIds(new Set(filteredBarbers.map((b) => b.id)));
+      }
     }
   };
 
   const handleSendCampaign = async () => {
-    if (selectedIds.size === 0) {
-      toast({ title: "Selecione pelo menos um cliente", variant: "destructive" });
+    const isClientsMode = recipientType === "clients";
+    const selectedCount = isClientsMode ? selectedIds.size : selectedBarberIds.size;
+
+    if (selectedCount === 0) {
+      toast({ title: "Selecione pelo menos um destinatário", variant: "destructive" });
       return;
     }
     if (!message.trim()) {
@@ -77,10 +114,19 @@ export function CampaignsTab() {
     setIsSending(true);
     
     try {
-      const targets = selectedClients.map((c) => ({
-        phone: c.phone,
-        name: c.name,
-      }));
+      let targets;
+      if (isClientsMode) {
+        targets = selectedClients.map((c) => ({
+          phone: c.phone,
+          name: c.name,
+        }));
+      } else {
+        const selectedBarbersList = barbers.filter((b) => selectedBarberIds.has(b.id));
+        targets = selectedBarbersList.map((b) => ({
+          phone: b.phone!,
+          name: b.name,
+        }));
+      }
 
       const { data, error } = await supabase.functions.invoke("send-marketing-campaign", {
         body: {
@@ -101,10 +147,14 @@ export function CampaignsTab() {
 
       toast({
         title: "Campanha enviada!",
-        description: data?.message || `Mensagem enviada para ${selectedIds.size} cliente(s).`,
+        description: data?.message || `Mensagem enviada para ${selectedCount} destinatário(s).`,
       });
       
-      setSelectedIds(new Set());
+      if (isClientsMode) {
+        setSelectedIds(new Set());
+      } else {
+        setSelectedBarberIds(new Set());
+      }
       setMessage("");
     } catch (err) {
       console.error("Unexpected error:", err);
@@ -119,6 +169,13 @@ export function CampaignsTab() {
   };
 
   const selectedClients = clients.filter((c) => selectedIds.has(c.id));
+  const selectedBarbersList = barbers.filter((b) => selectedBarberIds.has(b.id));
+  const totalSelected = recipientType === "clients" ? selectedIds.size : selectedBarberIds.size;
+  const previewName = recipientType === "clients" 
+    ? selectedClients[0]?.name 
+    : selectedBarbersList[0]?.name;
+  const currentListLength = recipientType === "clients" ? filteredClients.length : filteredBarbers.length;
+  const currentSelectedSize = recipientType === "clients" ? selectedIds.size : selectedBarberIds.size;
 
   return (
     <div className="space-y-6">
@@ -127,7 +184,7 @@ export function CampaignsTab() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {/* Unit Filter */}
           {units.length > 1 && (
-            <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setSelectedIds(new Set()); }}>
+            <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setSelectedIds(new Set()); setSelectedBarberIds(new Set()); }}>
               <SelectTrigger className="w-full sm:w-[200px]">
                 <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
                 <SelectValue placeholder="Unidade" />
@@ -143,21 +200,23 @@ export function CampaignsTab() {
             </Select>
           )}
 
-          <Select value={filter} onValueChange={(v) => { setFilter(v as ClientFilter); setSelectedIds(new Set()); }}>
-            <SelectTrigger className="w-full sm:w-[220px]">
-              <SelectValue placeholder="Filtrar clientes" />
-            </SelectTrigger>
-            <SelectContent>
-              {filterOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  <div className="flex items-center gap-2">
-                    <opt.icon className="h-4 w-4" />
-                    {opt.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {recipientType === "clients" && (
+            <Select value={filter} onValueChange={(v) => { setFilter(v as ClientFilter); setSelectedIds(new Set()); }}>
+              <SelectTrigger className="w-full sm:w-[220px]">
+                <SelectValue placeholder="Filtrar clientes" />
+              </SelectTrigger>
+              <SelectContent>
+                {filterOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    <div className="flex items-center gap-2">
+                      <opt.icon className="h-4 w-4" />
+                      {opt.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <div className="relative">
@@ -172,21 +231,30 @@ export function CampaignsTab() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Client List */}
+        {/* Recipient List */}
         <Card>
           <CardHeader className="pb-3">
+            <Tabs value={recipientType} onValueChange={(v) => setRecipientType(v as RecipientType)} className="mb-2">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="clients" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Clientes ({filteredClients.length})
+                </TabsTrigger>
+                <TabsTrigger value="barbers" className="flex items-center gap-2">
+                  <Scissors className="h-4 w-4" />
+                  Profissionais ({filteredBarbers.length})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">Clientes</CardTitle>
-                <CardDescription>
-                  {selectedIds.size > 0 
-                    ? `${selectedIds.size} de ${filteredClients.length} selecionados`
-                    : `${filteredClients.length} cliente(s) encontrado(s)`
-                  }
-                </CardDescription>
-              </div>
+              <CardDescription>
+                {currentSelectedSize > 0 
+                  ? `${currentSelectedSize} de ${currentListLength} selecionados`
+                  : `${currentListLength} encontrado(s)`
+                }
+              </CardDescription>
               <Button variant="outline" size="sm" onClick={selectAll}>
-                {selectedIds.size === filteredClients.length && filteredClients.length > 0 ? (
+                {currentSelectedSize === currentListLength && currentListLength > 0 ? (
                   <><CheckSquare className="mr-2 h-4 w-4" /> Desmarcar</>
                 ) : (
                   <><Square className="mr-2 h-4 w-4" /> Selecionar Todos</>
@@ -201,49 +269,91 @@ export function CampaignsTab() {
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : filteredClients.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">
-                <Users className="mx-auto h-12 w-12 opacity-30" />
-                <p className="mt-2">Nenhum cliente encontrado</p>
-              </div>
+            ) : recipientType === "clients" ? (
+              filteredClients.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  <Users className="mx-auto h-12 w-12 opacity-30" />
+                  <p className="mt-2">Nenhum cliente encontrado</p>
+                </div>
+              ) : (
+                <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
+                  {filteredClients.map((client) => (
+                    <div
+                      key={client.id}
+                      onClick={() => toggleSelection(client.id)}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                        selectedIds.has(client.id)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <Checkbox checked={selectedIds.has(client.id)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{client.name}</p>
+                        <p className="text-sm text-muted-foreground">{client.phone}</p>
+                        {showUnitBadge && client.unit_name && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                            <Building2 className="h-3 w-3" />
+                            <span>{client.unit_name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {client.birth_date && (
+                          <Badge variant="outline" className="mb-1">
+                            <Cake className="mr-1 h-3 w-3" />
+                            {client.birth_date.split("-").slice(1).reverse().join("/")}
+                          </Badge>
+                        )}
+                        {client.last_visit_at && (
+                          <p>Última visita: {format(new Date(client.last_visit_at), "dd/MM/yy")}</p>
+                        )}
+                        <p>{client.total_visits} visita(s)</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : (
-              <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
-                {filteredClients.map((client) => (
-                  <div
-                    key={client.id}
-                    onClick={() => toggleSelection(client.id)}
-                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
-                      selectedIds.has(client.id)
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:bg-muted/50"
-                    }`}
-                  >
-                    <Checkbox checked={selectedIds.has(client.id)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{client.name}</p>
-                      <p className="text-sm text-muted-foreground">{client.phone}</p>
-                      {showUnitBadge && client.unit_name && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                          <Building2 className="h-3 w-3" />
-                          <span>{client.unit_name}</span>
-                        </div>
-                      )}
+              filteredBarbers.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  <Scissors className="mx-auto h-12 w-12 opacity-30" />
+                  <p className="mt-2">Nenhum profissional com telefone encontrado</p>
+                </div>
+              ) : (
+                <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
+                  {filteredBarbers.map((barber) => (
+                    <div
+                      key={barber.id}
+                      onClick={() => toggleBarberSelection(barber.id)}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                        selectedBarberIds.has(barber.id)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <Checkbox checked={selectedBarberIds.has(barber.id)} />
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={barber.photo_url || undefined} />
+                        <AvatarFallback>{barber.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{barber.name}</p>
+                        <p className="text-sm text-muted-foreground">{barber.phone}</p>
+                        {showUnitBadge && barber.unit_name && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                            <Building2 className="h-3 w-3" />
+                            <span>{barber.unit_name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <Badge variant={barber.is_active ? "default" : "secondary"}>
+                        {barber.is_active ? "Ativo" : "Inativo"}
+                      </Badge>
                     </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      {client.birth_date && (
-                        <Badge variant="outline" className="mb-1">
-                          <Cake className="mr-1 h-3 w-3" />
-                          {client.birth_date.split("-").slice(1).reverse().join("/")}
-                        </Badge>
-                      )}
-                      {client.last_visit_at && (
-                        <p>Última visita: {format(new Date(client.last_visit_at), "dd/MM/yy")}</p>
-                      )}
-                      <p>{client.total_visits} visita(s)</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
             )}
           </CardContent>
         </Card>
@@ -254,7 +364,7 @@ export function CampaignsTab() {
               <div>
                 <CardTitle className="text-lg">Mensagem da Campanha</CardTitle>
                 <CardDescription>
-                  Use <code className="rounded bg-muted px-1">{"{{nome}}"}</code> para personalizar com o nome do cliente
+                  Use <code className="rounded bg-muted px-1">{"{{nome}}"}</code> para personalizar com o nome
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={() => setTemplatesModalOpen(true)}>
@@ -290,11 +400,11 @@ export function CampaignsTab() {
               className="min-h-[200px] resize-none"
             />
 
-            {message && selectedClients.length > 0 && (
+            {message && totalSelected > 0 && (
               <div className="rounded-lg border border-dashed p-3">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Prévia:</p>
                 <p className="text-sm">
-                  {message.replace(/\{\{nome\}\}/g, selectedClients[0]?.name || "Cliente")}
+                  {message.replace(/\{\{nome\}\}/g, previewName || "Destinatário")}
                 </p>
               </div>
             )}
@@ -303,12 +413,12 @@ export function CampaignsTab() {
               className="w-full"
               size="lg"
               onClick={handleSendCampaign}
-              disabled={isSending || selectedIds.size === 0 || !message.trim()}
+              disabled={isSending || totalSelected === 0 || !message.trim()}
             >
               <Send className="mr-2 h-4 w-4" />
               {isSending
                 ? "Enviando..."
-                : `Enviar Campanha (${selectedIds.size} cliente${selectedIds.size !== 1 ? "s" : ""})`
+                : `Enviar Campanha (${totalSelected} ${recipientType === "clients" ? "cliente" : "profissional"}${totalSelected !== 1 ? "s" : ""})`
               }
             </Button>
           </CardContent>
