@@ -55,7 +55,8 @@ serve(async (req) => {
       throw new Error('Usuário não autenticado');
     }
 
-    const { action, unit_id } = await req.json();
+    const body = await req.json();
+    const { action, unit_id, instance_name } = body;
     console.log(`Action: ${action}, Unit ID: ${unit_id}, User: ${user.id}`);
 
     // For unit-based operations, validate the unit belongs to the user
@@ -456,8 +457,7 @@ serve(async (req) => {
 
       case 'cleanup': {
         // Cleanup action: delete instance by name passed directly (used when modal closes)
-        const body = await req.clone().json().catch(() => ({}));
-        const instanceToDelete = body.instance_name || unit.evolution_instance_name;
+        const instanceToDelete = instance_name || unit.evolution_instance_name;
         
         console.log(`Cleanup requested for unit ${unit.id}, instance: ${instanceToDelete}`);
 
