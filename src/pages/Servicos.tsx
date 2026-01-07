@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Plus, Scissors, Loader2, Clock } from "lucide-react";
+import { Plus, Scissors, Loader2, Clock, Check } from "lucide-react";
 import { useServices, Service } from "@/hooks/useServices";
 import { useCurrentUnit } from "@/contexts/UnitContext";
 import { ServiceCard } from "@/components/services/ServiceCard";
 import { ServiceFormModal } from "@/components/services/ServiceFormModal";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 const EXAMPLE_SERVICES = [
   { name: "Corte Masculino", price: 45, duration_minutes: 30 },
@@ -25,6 +26,8 @@ export default function Servicos() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [selectedExamples, setSelectedExamples] = useState<Set<string>>(new Set());
+  const [isSavingExamples, setIsSavingExamples] = useState(false);
 
   const handleOpenModal = (service?: Service) => {
     setEditingService(service || null);
@@ -52,13 +55,39 @@ export default function Servicos() {
     deleteService.mutate(id);
   };
 
-  const handleAddExampleService = (example: typeof EXAMPLE_SERVICES[0]) => {
-    createService.mutate({
-      name: example.name,
-      price: example.price,
-      duration_minutes: example.duration_minutes,
-      is_active: true,
+  const toggleExampleSelection = (name: string) => {
+    setSelectedExamples(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(name)) {
+        newSet.delete(name);
+      } else {
+        newSet.add(name);
+      }
+      return newSet;
     });
+  };
+
+  const handleSaveSelectedExamples = async () => {
+    if (selectedExamples.size === 0) return;
+    
+    setIsSavingExamples(true);
+    const selectedServices = EXAMPLE_SERVICES.filter(s => selectedExamples.has(s.name));
+    
+    for (const example of selectedServices) {
+      await new Promise<void>((resolve) => {
+        createService.mutate({
+          name: example.name,
+          price: example.price,
+          duration_minutes: example.duration_minutes,
+          is_active: true,
+        }, {
+          onSettled: () => resolve()
+        });
+      });
+    }
+    
+    setSelectedExamples(new Set());
+    setIsSavingExamples(false);
   };
 
   const formatPrice = (price: number) => {
@@ -102,33 +131,64 @@ export default function Servicos() {
               <Scissors className="mx-auto h-12 w-12 text-muted-foreground/50" />
               <h3 className="mt-4 text-lg font-medium text-foreground">Comece com exemplos ou crie do zero</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Clique para adicionar, depois edite conforme seu negócio
+                Selecione os serviços que deseja adicionar
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {EXAMPLE_SERVICES.map((example) => (
-                <Card 
-                  key={example.name}
-                  className="border-dashed border-2 hover:border-primary/50 hover:bg-accent/50 transition-colors cursor-pointer group"
-                  onClick={() => handleAddExampleService(example)}
-                >
-                  <CardContent className="p-4 flex flex-col items-center text-center gap-2">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Plus className="h-5 w-5 text-primary" />
-                    </div>
-                    <h4 className="font-medium text-foreground">{example.name}</h4>
-                    <p className="text-lg font-semibold text-primary">{formatPrice(example.price)}</p>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{example.duration_minutes} min</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {EXAMPLE_SERVICES.map((example) => {
+                const isSelected = selectedExamples.has(example.name);
+                return (
+                  <Card 
+                    key={example.name}
+                    className={cn(
+                      "border-2 transition-colors cursor-pointer group",
+                      isSelected 
+                        ? "border-primary bg-primary/10" 
+                        : "border-dashed hover:border-primary/50 hover:bg-accent/50"
+                    )}
+                    onClick={() => toggleExampleSelection(example.name)}
+                  >
+                    <CardContent className="p-4 flex flex-col items-center text-center gap-2 relative">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
+                        isSelected 
+                          ? "bg-primary text-primary-foreground" 
+                          : "bg-primary/10 group-hover:bg-primary/20"
+                      )}>
+                        {isSelected ? (
+                          <Check className="h-5 w-5" />
+                        ) : (
+                          <Plus className="h-5 w-5 text-primary" />
+                        )}
+                      </div>
+                      <h4 className="font-medium text-foreground">{example.name}</h4>
+                      <p className="text-lg font-semibold text-primary">{formatPrice(example.price)}</p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{example.duration_minutes} min</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex flex-col sm:flex-row justify-center gap-3">
+              {selectedExamples.size > 0 && (
+                <Button 
+                  onClick={handleSaveSelectedExamples} 
+                  disabled={isSavingExamples}
+                  className="gap-2"
+                >
+                  {isSavingExamples ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  Salvar {selectedExamples.size} serviço{selectedExamples.size > 1 ? 's' : ''}
+                </Button>
+              )}
               <Button variant="outline" onClick={() => handleOpenModal()} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Criar serviço personalizado
