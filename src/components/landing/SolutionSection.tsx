@@ -1,6 +1,5 @@
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { ChatSimulation } from "./ChatSimulation";
-import { DashboardPreview } from "./DashboardPreview";
 import { Bot, Clock, MessageCircle, Calendar, Bell, UserCheck, Gift, RefreshCcw, Smartphone } from "lucide-react";
 
 const features = [
@@ -92,12 +91,15 @@ export function SolutionSection() {
             </div>
           </div>
 
-          {/* Dashboard + Chat */}
+          {/* Chat Simulation */}
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-radial from-gold/20 to-transparent opacity-50 blur-3xl" />
+            <div className="relative z-10 transform lg:translate-x-8">
+              <ChatSimulation />
+            </div>
             
             {/* Floating Stats */}
-            <div className="absolute -top-4 left-0 z-30 bg-charcoal border border-border/30 rounded-lg p-4 shadow-xl animate-fade-in">
+            <div className="absolute -top-4 -left-4 bg-charcoal border border-border/30 rounded-lg p-4 shadow-xl animate-fade-in">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
                   <MessageCircle className="h-5 w-5 text-green-500" />
@@ -108,26 +110,8 @@ export function SolutionSection() {
                 </div>
               </div>
             </div>
-            
-            {/* Notebook Mockup with Dashboard */}
-            <div className="relative z-10 bg-charcoal rounded-lg p-2 shadow-2xl border border-border/30 transform hover:scale-[1.02] transition-transform duration-300">
-              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/30">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-              </div>
-              <div className="aspect-video bg-background rounded overflow-hidden">
-                <DashboardPreview />
-              </div>
-            </div>
 
-            {/* Phone Mockup with Chat */}
-            <div className="absolute -right-4 -bottom-8 w-64 z-20 transform hover:scale-105 transition-transform duration-300">
-              <ChatSimulation />
-            </div>
-
-            {/* Floating Stats Bottom */}
-            <div className="absolute bottom-8 -left-4 z-30 bg-charcoal border border-border/30 rounded-lg p-4 shadow-xl animate-fade-in">
+            <div className="absolute -bottom-4 -right-4 bg-charcoal border border-border/30 rounded-lg p-4 shadow-xl animate-fade-in">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-gold" />
