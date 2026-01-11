@@ -80,21 +80,20 @@ serve(async (req) => {
   }
 
   try {
-    // Verify API Key
-    const apiKey = req.headers.get('x-api-key');
-    const expectedApiKey = Deno.env.get('BARBERSOFT_API_KEY');
-    
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Não autorizado' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get API key from header
+    const apiKey = req.headers.get('x-api-key');
+    
+    if (!apiKey) {
+      console.error('Missing API key');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Chave de API não fornecida' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const body = await req.json();
     const { action, instance_name } = body;
@@ -102,18 +101,21 @@ serve(async (req) => {
     console.log('Agenda API called with action:', action);
     console.log('Request body:', JSON.stringify(body));
 
-    // Se instance_name for fornecido, buscar a unidade diretamente por ele
+    // Resolve unit from instance_name or unit_id, validating with per-unit API key
     let resolvedUnitId = body.unit_id;
     let companyId = null;
     let unitTimezone = 'America/Sao_Paulo'; // default
-    
-    if (instance_name && !resolvedUnitId) {
+    let validatedUnit = null;
+
+    // Primary authentication: validate API key against unit's agenda_api_key
+    // This ensures each unit has its own unique key for security isolation
+    if (instance_name) {
       console.log(`Looking up unit by instance_name: ${instance_name}`);
       
-      // Busca direto na tabela units pelo evolution_instance_name (inclui credenciais Evolution)
+      // Busca direto na tabela units pelo evolution_instance_name e valida API key
       const { data: unit, error: unitError } = await supabase
         .from('units')
-        .select('id, company_id, timezone, evolution_instance_name, evolution_api_key')
+        .select('id, company_id, timezone, evolution_instance_name, evolution_api_key, agenda_api_key')
         .eq('evolution_instance_name', instance_name)
         .maybeSingle();
       
@@ -132,36 +134,68 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      // Validate per-unit API key
+      if (!unit.agenda_api_key || unit.agenda_api_key !== apiKey) {
+        console.error('Invalid API key for unit:', instance_name);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Chave de API inválida para esta unidade' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       
+      validatedUnit = unit;
       resolvedUnitId = unit.id;
       companyId = unit.company_id;
       unitTimezone = unit.timezone || 'America/Sao_Paulo';
-      console.log(`Resolved unit_id: ${resolvedUnitId}, company_id: ${companyId}, timezone: ${unitTimezone}`);
+      console.log(`Resolved and validated unit_id: ${resolvedUnitId}, company_id: ${companyId}, timezone: ${unitTimezone}`);
+    } else if (resolvedUnitId) {
+      // If unit_id is provided directly, validate API key against it
+      const { data: unit, error: unitError } = await supabase
+        .from('units')
+        .select('id, company_id, timezone, evolution_instance_name, evolution_api_key, agenda_api_key')
+        .eq('id', resolvedUnitId)
+        .maybeSingle();
+
+      if (unitError || !unit) {
+        console.error('Unit not found for id:', resolvedUnitId);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unidade não encontrada' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Validate per-unit API key
+      if (!unit.agenda_api_key || unit.agenda_api_key !== apiKey) {
+        console.error('Invalid API key for unit_id:', resolvedUnitId);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Chave de API inválida para esta unidade' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      validatedUnit = unit;
+      companyId = unit.company_id;
+      unitTimezone = unit.timezone || 'America/Sao_Paulo';
+      console.log(`Validated unit_id: ${resolvedUnitId}, company_id: ${companyId}, timezone: ${unitTimezone}`);
+    } else {
+      // No unit identifier provided - cannot authenticate
+      console.error('No instance_name or unit_id provided');
+      return new Response(
+        JSON.stringify({ success: false, error: 'É necessário fornecer instance_name ou unit_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Passar o unit_id resolvido para os handlers (inclui credenciais Evolution se disponíveis)
+    // Passar o unit_id resolvido para os handlers (inclui credenciais Evolution da unidade validada)
     const enrichedBody = { 
       ...body, 
       unit_id: resolvedUnitId, 
       company_id: companyId, 
       unit_timezone: unitTimezone,
-      evolution_instance_name: body.evolution_instance_name || (instance_name ? instance_name : null),
-      evolution_api_key: body.evolution_api_key || null
+      evolution_instance_name: validatedUnit?.evolution_instance_name || body.evolution_instance_name || null,
+      evolution_api_key: validatedUnit?.evolution_api_key || body.evolution_api_key || null
     };
-    
-    // Se buscamos a unidade por instance_name, adicionar as credenciais
-    if (instance_name && !body.unit_id) {
-      const { data: unitCreds } = await supabase
-        .from('units')
-        .select('evolution_instance_name, evolution_api_key')
-        .eq('id', resolvedUnitId)
-        .single();
-      
-      if (unitCreds) {
-        enrichedBody.evolution_instance_name = unitCreds.evolution_instance_name;
-        enrichedBody.evolution_api_key = unitCreds.evolution_api_key;
-      }
-    }
 
     switch (action) {
       // Consultar disponibilidade (alias: check_availability)

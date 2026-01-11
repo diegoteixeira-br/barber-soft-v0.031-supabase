@@ -921,6 +921,7 @@ export type Database = {
       units: {
         Row: {
           address: string | null
+          agenda_api_key: string | null
           company_id: string | null
           created_at: string
           evolution_api_key: string | null
@@ -938,6 +939,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          agenda_api_key?: string | null
           company_id?: string | null
           created_at?: string
           evolution_api_key?: string | null
@@ -955,6 +957,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          agenda_api_key?: string | null
           company_id?: string | null
           created_at?: string
           evolution_api_key?: string | null
@@ -1010,6 +1013,7 @@ export type Database = {
         Args: { _barber_id: string }
         Returns: boolean
       }
+      generate_agenda_api_key: { Args: never; Returns: string }
       get_barber_by_user_id: {
         Args: { _user_id: string }
         Returns: {
