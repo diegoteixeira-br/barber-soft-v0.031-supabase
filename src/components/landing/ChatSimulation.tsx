@@ -38,7 +38,7 @@ export function ChatSimulation() {
   }, [visibleMessages.length === 0]);
 
   return (
-    <div className="bg-[#0b141a] rounded-2xl overflow-hidden shadow-2xl border border-border/30 max-w-sm mx-auto">
+    <div className="bg-[#0b141a] rounded-2xl overflow-hidden shadow-2xl border border-border/30 w-full max-w-xs sm:max-w-sm mx-auto">
       {/* WhatsApp Header */}
       <div className="bg-[#1f2c34] px-4 py-3 flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center">

@@ -51,30 +51,31 @@ export function FeaturesGrid() {
   const { ref, isVisible } = useScrollAnimation();
 
   return (
-    <section id="funcionalidades" className="py-20 bg-background relative scroll-mt-20">
-      <div className="container mx-auto px-4">
+    <section id="funcionalidades" className="py-16 sm:py-20 bg-background relative scroll-mt-20">
+      <div className="container mx-auto px-6 sm:px-4">
         <div
           ref={ref}
-          className={`text-center mb-16 transition-all duration-700 ${
+          className={`text-center mb-10 sm:mb-16 transition-all duration-700 ${
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
           <span className="text-gold font-semibold text-sm uppercase tracking-wider">
             Funcionalidades
           </span>
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mt-2 mb-4">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mt-2 mb-4">
             Tudo que sua barbearia precisa
           </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
             Sistema completo de gestão desenvolvido especificamente para barbearias modernas.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        {/* Grid - 1 coluna em mobile, 2 em tablet, 3 em desktop */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-6xl mx-auto">
           {features.map((feature, index) => (
             <div
               key={index}
-              className={`group relative p-6 rounded-2xl bg-charcoal/50 border border-border/30 hover:border-gold/50 transition-all duration-500 hover:transform hover:scale-[1.02] overflow-hidden ${
+              className={`group relative p-5 sm:p-6 rounded-2xl bg-charcoal/50 border border-border/30 hover:border-gold/50 transition-all duration-500 hover:transform hover:scale-[1.02] overflow-hidden ${
                 isVisible
                   ? "opacity-100 translate-y-0"
                   : "opacity-0 translate-y-8"
@@ -88,22 +89,22 @@ export function FeaturesGrid() {
 
               <div className="relative z-10">
                 <div
-                  className={`w-14 h-14 rounded-xl ${
+                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl ${
                     feature.color === "gold" ? "bg-gold/10" : "bg-orange-neon/10"
                   } flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}
                 >
                   <feature.icon
-                    className={`h-7 w-7 ${
+                    className={`h-6 w-6 sm:h-7 sm:w-7 ${
                       feature.color === "gold" ? "text-gold" : "text-orange-neon"
                     }`}
                   />
                 </div>
 
-                <h3 className="text-xl font-semibold text-foreground mb-2">
+                <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-2">
                   {feature.title}
                 </h3>
 
-                <p className="text-muted-foreground text-sm leading-relaxed">
+                <p className="text-muted-foreground text-xs sm:text-sm leading-relaxed">
                   {feature.description}
                 </p>
               </div>
