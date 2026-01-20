@@ -262,8 +262,7 @@ export function AppointmentFormModal({
                         Adicionar dependente
                       </Button>
                     </div>
-                  {dependents && dependents.length > 0 ? (
-                    <>
+                    {dependents && dependents.length > 0 ? (
                       <Select
                         value={selectedDependentId || "titular"}
                         onValueChange={handleDependentSelect}
@@ -290,13 +289,17 @@ export function AppointmentFormModal({
                           ))}
                         </SelectContent>
                       </Select>
-                      {selectedDependentId && (
-                        <p className="text-xs text-muted-foreground">
-                          O agendamento será registrado para o dependente, mas o contato será feito com o titular.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Nenhum dependente cadastrado. Clique em "Adicionar dependente" para incluir.
+                      </p>
+                    )}
+                    {selectedDependentId && (
+                      <p className="text-xs text-muted-foreground">
+                        O agendamento será registrado para o dependente, mas o contato será feito com o titular.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -457,6 +460,18 @@ export function AppointmentFormModal({
         isLoading={createClient.isPending}
         initialName={newClientName}
       />
+
+      {/* Quick Create Dependent Modal */}
+      {selectedClientId && (
+        <DependentFormModal
+          open={showCreateDependent}
+          onOpenChange={setShowCreateDependent}
+          clientId={selectedClientId}
+          onCreate={handleDependentCreated}
+          onSave={() => {}}
+          isLoading={createDependent.isPending}
+        />
+      )}
     </>
   );
 }
