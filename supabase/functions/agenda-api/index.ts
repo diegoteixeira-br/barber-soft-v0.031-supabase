@@ -1264,11 +1264,14 @@ async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
   }
 
   if (!client) {
+    console.log(`Cliente não encontrado para telefone: ${clientPhone}`);
     return new Response(
       JSON.stringify({
-        success: true,
-        found: false,
-        message: 'Cliente não encontrado'
+        status: "nao_encontrado",
+        cliente: null,
+        dependentes: [],
+        mensagem: "Cliente não cadastrado. Iniciar cadastro obrigatório.",
+        proxima_acao: "cadastrar_cliente"
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -1291,9 +1294,8 @@ async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
 
   return new Response(
     JSON.stringify({
-      success: true,
-      found: true,
-      client: {
+      status: "encontrado",
+      cliente: {
         id: client.id,
         name: client.name,
         phone: client.phone,
@@ -1304,7 +1306,8 @@ async function handleCheckClient(supabase: any, body: any, corsHeaders: any) {
         last_visit_at: client.last_visit_at,
         created_at: client.created_at
       },
-      dependents: dependents || []
+      dependentes: dependents || [],
+      proxima_acao: "oferecer_agendamento"
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
