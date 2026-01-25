@@ -1,4 +1,4 @@
-import { Phone, Calendar, Clock, Edit2, Trash2, Building2, BellOff, Eye } from "lucide-react";
+import { Phone, Calendar, Clock, Edit2, Trash2, Building2, BellOff, Eye, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -111,8 +111,17 @@ export function ClientCard({ client, onEdit, onDelete, onView, showUnit = false 
           </div>
         </div>
 
-        {(client.marketing_opt_out || (client.tags && client.tags.length > 0)) && (
+        {(client.dependents_count && client.dependents_count > 0) || client.marketing_opt_out || (client.tags && client.tags.length > 0) ? (
           <div className="mt-3 flex flex-wrap gap-1">
+            {client.dependents_count && client.dependents_count > 0 && (
+              <Badge
+                variant="outline"
+                className="bg-primary/20 text-primary border-primary/30 gap-1"
+              >
+                <Users className="h-3 w-3" />
+                {client.dependents_count} dependente{client.dependents_count > 1 ? "s" : ""}
+              </Badge>
+            )}
             {client.marketing_opt_out && (
               <Badge
                 variant="outline"
@@ -132,7 +141,7 @@ export function ClientCard({ client, onEdit, onDelete, onView, showUnit = false 
               </Badge>
             ))}
           </div>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

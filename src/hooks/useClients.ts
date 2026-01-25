@@ -19,6 +19,7 @@ export interface Client {
   unit_name?: string;
   marketing_opt_out: boolean | null;
   opted_out_at: string | null;
+  dependents_count?: number;
 }
 
 export type CreateClientData = {
@@ -55,7 +56,7 @@ export function useClients(filterOrOptions: ClientFilter | UseClientsOptions = "
     queryFn: async () => {
       let query = supabase
         .from("clients")
-        .select("*, units!inner(name)")
+        .select("*, units!inner(name), client_dependents(count)")
         .order("name", { ascending: true });
 
       // Filter by unit
@@ -80,7 +81,9 @@ export function useClients(filterOrOptions: ClientFilter | UseClientsOptions = "
       let clients = (data || []).map((item: any) => ({
         ...item,
         unit_name: item.units?.name || "Unidade desconhecida",
+        dependents_count: item.client_dependents?.[0]?.count || 0,
         units: undefined,
+        client_dependents: undefined,
       })) as Client[];
 
       // Apply filters
