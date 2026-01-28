@@ -1,211 +1,175 @@
 
-# Plano: Sanitização Dinâmica de Telefones com DDD da Unidade
+# Plano: Correção da Busca de Clientes na API
 
-## Resumo
+## Diagnóstico do Problema
 
-Criar um trigger de banco de dados que sanitiza automaticamente os telefones antes de salvar, usando o DDD da unidade associada quando o número estiver incompleto.
+### O que está acontecendo
 
-## Análise do Estado Atual
+O cliente **Diego Teixeira** existe no banco com o telefone `5565999891722` (13 dígitos), mas a API está buscando por `556599891722` (12 dígitos) - falta o nono dígito!
 
-### Problema Identificado
-Os telefones estão sendo salvos em formatos inconsistentes:
-- `(65) 99999-9998` (formatado com máscara)
-- `6599891722` (apenas números com DDD)
-- `98985847358` (número de outra região)
-- `99999-9998` (sem DDD)
+| Origem | Telefone | Comprimento |
+|--------|----------|-------------|
+| WhatsApp (enviado) | `556599891722` | 12 dígitos |
+| Banco de dados | `5565999891722` | 13 dígitos |
 
-### Tabelas Afetadas
-| Tabela | Campo | Prioridade |
-|--------|-------|------------|
-| `clients` | `phone` | **Alta** - Principal |
-| `appointments` | `client_phone` | **Alta** - Usado para sync |
-| `barbers` | `phone` | Média |
-| `product_sales` | `client_phone` | Baixa |
-| `cancellation_history` | `client_phone` | Baixa (histórico) |
-| `appointment_deletions` | `client_phone` | Baixa (histórico) |
+A diferença está no **nono dígito** (`9` extra no celular):
+- Enviado: `55` + `65` + `99891722` = 12 dígitos (8 dígitos locais)
+- Salvo: `55` + `65` + `999891722` = 13 dígitos (9 dígitos locais)
 
-### Fonte do DDD Padrão
-A tabela `units` possui o campo `phone` que contém o telefone da unidade (ex: `65996141516`). Os primeiros 2 dígitos após remover o 55 serão usados como DDD padrão.
+### Por que isso acontece
+
+O WhatsApp Evolution API retorna o número no formato internacional, mas alguns números de celular antigos podem estar sem o nono dígito de prefixo. 
+
+No Brasil:
+- Celulares com DDD têm **9 dígitos locais** (começando com 9)
+- Fixos têm **8 dígitos locais**
+
+O problema é que a busca atual faz uma comparação **exata** (`eq('phone', clientPhone)`), então se os formatos forem diferentes, não encontra.
+
+### Situação atual no banco
+- **47 clientes** com 13 dígitos (formato correto com nono dígito)
+- **3 clientes** com 12 dígitos (sem nono dígito - formato antigo ou incorreto)
 
 ## Solução Proposta
 
-### Parte 1: Função de Sanitização
+### Parte 1: Busca Flexível na Edge Function
 
-Criar uma função PostgreSQL reutilizável:
+Modificar a função `handleCheckClient` para fazer uma busca mais inteligente:
 
-```sql
-CREATE OR REPLACE FUNCTION sanitize_brazilian_phone(
-  raw_phone TEXT,
-  unit_id UUID DEFAULT NULL
-) RETURNS TEXT AS $$
-DECLARE
-  digits TEXT;
-  unit_phone TEXT;
-  unit_ddd TEXT;
-BEGIN
-  -- 1. Remover tudo que não for número
-  digits := regexp_replace(raw_phone, '\D', '', 'g');
-  
-  -- Se vazio, retorna NULL
-  IF digits IS NULL OR digits = '' THEN
-    RETURN NULL;
-  END IF;
-  
-  -- 2. Verificar comprimento e completar
-  
-  -- Caso completo (12+ dígitos): já tem código de país
-  IF length(digits) >= 12 THEN
-    IF left(digits, 2) = '55' THEN
-      RETURN digits; -- Já está completo
-    ELSE
-      RETURN '55' || digits; -- Adiciona 55
-    END IF;
-  END IF;
-  
-  -- Caso com DDD (10-11 dígitos): adiciona apenas 55
-  IF length(digits) >= 10 AND length(digits) <= 11 THEN
-    RETURN '55' || digits;
-  END IF;
-  
-  -- Caso local (8-9 dígitos): precisa buscar DDD da unidade
-  IF length(digits) >= 8 AND length(digits) <= 9 THEN
-    -- Buscar telefone da unidade para extrair DDD
-    IF unit_id IS NOT NULL THEN
-      SELECT phone INTO unit_phone FROM units WHERE id = unit_id;
-      
-      IF unit_phone IS NOT NULL THEN
-        -- Extrair DDD do telefone da unidade
-        unit_phone := regexp_replace(unit_phone, '\D', '', 'g');
-        
-        -- Se tem 55 no início, pular
-        IF left(unit_phone, 2) = '55' AND length(unit_phone) >= 4 THEN
-          unit_ddd := substr(unit_phone, 3, 2);
-        ELSIF length(unit_phone) >= 2 THEN
-          unit_ddd := left(unit_phone, 2);
-        END IF;
-        
-        -- Montar número completo
-        IF unit_ddd IS NOT NULL AND length(unit_ddd) = 2 THEN
-          RETURN '55' || unit_ddd || digits;
-        END IF;
-      END IF;
-    END IF;
+1. **Normalizar o telefone de busca** para garantir formato consistente
+2. **Buscar com variações** quando a busca exata falhar:
+   - Se o número tem 12 dígitos (faltando 9º dígito), também buscar adicionando o "9" após o DDD
+   - Se o número tem 13 dígitos, também buscar removendo o "9" após o DDD
+
+```typescript
+async function handleCheckClient(supabase, body, corsHeaders) {
+  const rawPhone = body.telefone || body.client_phone;
+  const clientPhone = rawPhone?.replace(/\D/g, '') || null;
+  const { unit_id } = body;
+
+  // ... validações ...
+
+  // BUSCA EXATA primeiro
+  let { data: client } = await supabase
+    .from('clients')
+    .select(...)
+    .eq('unit_id', unit_id)
+    .eq('phone', clientPhone)
+    .maybeSingle();
+
+  // Se não encontrou, tentar variações
+  if (!client) {
+    const variations = getPhoneVariations(clientPhone);
     
-    -- Sem DDD disponível, retorna o número como está
-    RETURN digits;
-  END IF;
+    for (const variation of variations) {
+      const { data: foundClient } = await supabase
+        .from('clients')
+        .select(...)
+        .eq('unit_id', unit_id)
+        .eq('phone', variation)
+        .maybeSingle();
+      
+      if (foundClient) {
+        client = foundClient;
+        break;
+      }
+    }
+  }
   
-  -- Número muito curto, retorna como está
-  RETURN digits;
-END;
-$$ LANGUAGE plpgsql;
+  // ... resto da lógica ...
+}
+
+function getPhoneVariations(phone) {
+  const variations = [];
+  
+  // Se tem 12 dígitos (55 + DDD + 8 dígitos), adicionar o 9
+  // Ex: 556599891722 -> 5565999891722
+  if (phone.length === 12 && phone.startsWith('55')) {
+    const ddd = phone.substring(2, 4);
+    const localNumber = phone.substring(4);
+    variations.push(`55${ddd}9${localNumber}`);
+  }
+  
+  // Se tem 13 dígitos com 9 extra, remover o 9
+  // Ex: 5565999891722 -> 556599891722
+  if (phone.length === 13 && phone.startsWith('55')) {
+    const ddd = phone.substring(2, 4);
+    const localWithNine = phone.substring(4);
+    if (localWithNine.startsWith('9')) {
+      variations.push(`55${ddd}${localWithNine.substring(1)}`);
+    }
+  }
+  
+  return variations;
+}
 ```
 
-### Parte 2: Trigger para Tabela `clients`
+### Parte 2: Normalização dos Dados Existentes (Migration)
+
+Corrigir os 3 clientes que estão com 12 dígitos adicionando o nono dígito:
 
 ```sql
-CREATE OR REPLACE FUNCTION sanitize_client_phone_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Sanitiza o telefone usando a função
-  NEW.phone := sanitize_brazilian_phone(NEW.phone, NEW.unit_id);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_sanitize_client_phone
-  BEFORE INSERT OR UPDATE OF phone ON clients
-  FOR EACH ROW
-  EXECUTE FUNCTION sanitize_client_phone_trigger();
+-- Adiciona o 9º dígito para celulares que estão com apenas 8 dígitos locais
+UPDATE public.clients
+SET 
+  phone = SUBSTR(phone, 1, 4) || '9' || SUBSTR(phone, 5),
+  updated_at = NOW()
+WHERE phone IS NOT NULL
+  AND LENGTH(phone) = 12
+  AND phone LIKE '55%'
+  -- Garantir que é celular (começa com 9 após o DDD)
+  AND SUBSTR(phone, 5, 1) = '9';
 ```
 
-### Parte 3: Trigger para Tabela `appointments`
+### Parte 3: Aplicar Mesma Lógica no `handleRegisterClient`
 
-```sql
-CREATE OR REPLACE FUNCTION sanitize_appointment_phone_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Sanitiza o telefone do cliente
-  NEW.client_phone := sanitize_brazilian_phone(NEW.client_phone, NEW.unit_id);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+Para evitar futuros problemas, normalizar o telefone ao cadastrar novos clientes.
 
-CREATE TRIGGER trigger_sanitize_appointment_phone
-  BEFORE INSERT OR UPDATE OF client_phone ON appointments
-  FOR EACH ROW
-  EXECUTE FUNCTION sanitize_appointment_phone_trigger();
-```
-
-### Parte 4: Migration para Dados Existentes (Opcional)
-
-Após criar os triggers, podemos normalizar os dados existentes:
-
-```sql
--- Normalizar telefones de clientes existentes
-UPDATE clients c
-SET phone = sanitize_brazilian_phone(phone, unit_id)
-WHERE phone IS NOT NULL;
-
--- Normalizar telefones de agendamentos
-UPDATE appointments a
-SET client_phone = sanitize_brazilian_phone(client_phone, unit_id)
-WHERE client_phone IS NOT NULL;
-```
-
-## Exemplos de Comportamento
-
-| Input | DDD Unidade | Resultado |
-|-------|-------------|-----------|
-| `(65) 99999-9998` | - | `5565999999998` |
-| `99999-9998` | `65` | `556599999998` |
-| `999999998` | `11` | `5511999999998` |
-| `6599891722` | - | `556599891722` |
-| `556599891722` | - | `556599891722` |
-
-## Arquivos a Serem Modificados
+## Resumo das Alterações
 
 | Arquivo | Alteração |
 |---------|-----------|
-| Nova migration SQL | Criar função + triggers |
-| Frontend (opcional) | Nenhuma alteração necessária - sanitização é transparente |
+| `supabase/functions/agenda-api/index.ts` | Adicionar função `getPhoneVariations` e atualizar `handleCheckClient` para buscar com variações |
+| Nova migration SQL | Normalizar telefones existentes com 12 dígitos |
+
+## Fluxo Após a Correção
+
+```text
+WhatsApp envia: 556599891722
+         ↓
+     Busca exata
+         ↓
+   Não encontrado
+         ↓
+  Tenta variação: 5565999891722
+         ↓
+   ✅ ENCONTRADO!
+```
 
 ---
 
 ## Seção Técnica
 
-### Fluxo de Execução
+### Lógica de Variação de Telefone
 
-```text
-+------------------+     +-------------------+     +------------------+
-| Insert/Update    |     | BEFORE Trigger    |     | Dados Salvos     |
-| phone = "(65)    |---->| sanitize_phone()  |---->| phone =          |
-| 99999-9998"      |     |                   |     | "5565999999998"  |
-+------------------+     +-------------------+     +------------------+
-                                |
-                                v
-                         +--------------+
-                         | Extrai DDD   |
-                         | da Unidade   |
-                         | se necessário|
-                         +--------------+
-```
+A função `getPhoneVariations` cria variações inteligentes:
 
-### Lógica de Extração do DDD
+| Input (12 dígitos) | Variação (13 dígitos) |
+|--------------------|----------------------|
+| `556599891722` | `5565999891722` |
+| `552195265119` | `5521995265119` |
 
-1. Remove caracteres não numéricos do telefone da unidade
-2. Se começa com `55` e tem 4+ dígitos → DDD são os dígitos 3-4
-3. Caso contrário → DDD são os primeiros 2 dígitos
+| Input (13 dígitos) | Variação (12 dígitos) |
+|--------------------|----------------------|
+| `5565999891722` | `556599891722` |
 
-### Considerações de Performance
+### Por que não usar LIKE na busca?
 
-- Trigger `BEFORE` não adiciona overhead significativo
-- Função usa apenas operações de string (sem JOINs complexos)
-- Busca da unidade é por chave primária (índice)
+- **Performance**: `LIKE` com wildcard no início (`%phone`) não usa índice
+- **Precisão**: Poderia retornar falsos positivos
 
-### Compatibilidade
+### Por que buscar variações sequencialmente?
 
-- Não quebra nenhum código existente
-- Frontend continua enviando telefones formatados
-- Backend normaliza transparentemente
-- Buscas por telefone funcionam pois todos ficam no mesmo formato
+- A maioria das buscas vai encontrar na primeira tentativa (busca exata)
+- Apenas casos edge (números antigos) precisam das variações
+- Mínimo impacto na performance
