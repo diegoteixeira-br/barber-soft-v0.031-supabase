@@ -1555,6 +1555,10 @@ export type Database = {
       increment_campaign_failed: { Args: { cid: string }; Returns: undefined }
       increment_campaign_sent: { Args: { cid: string }; Returns: undefined }
       is_super_admin: { Args: never; Returns: boolean }
+      sanitize_brazilian_phone: {
+        Args: { p_unit_id?: string; raw_phone: string }
+        Returns: string
+      }
       user_owns_company: { Args: { p_company_id: string }; Returns: boolean }
       user_owns_unit: { Args: { unit_id: string }; Returns: boolean }
     }
