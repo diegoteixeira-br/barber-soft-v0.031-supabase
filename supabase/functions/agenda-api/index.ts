@@ -671,8 +671,11 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
   let clientData = null;
 
   if (clientPhone) {
-    // Buscar cliente existente pelo telefone normalizado
-    const { data: existingClient, error: clientFetchError } = await supabase
+    // === BUSCA FLEXÍVEL DE CLIENTE ===
+    let existingClient = null;
+    
+    // 1. BUSCA EXATA primeiro
+    const { data: exactMatch, error: clientFetchError } = await supabase
       .from('clients')
       .select('id, name, phone, birth_date, notes, tags, total_visits')
       .eq('unit_id', unit_id)
@@ -682,49 +685,41 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
     if (clientFetchError) {
       console.error('Error fetching client:', clientFetchError);
     }
+    
+    existingClient = exactMatch;
+
+    // 2. Se não encontrou, tentar VARIAÇÕES de telefone (9º dígito)
+    if (!existingClient) {
+      const variations = getPhoneVariations(clientPhone);
+      console.log(`Cliente não encontrado com busca exata (${clientPhone}). Tentando ${variations.length} variações:`, variations);
+      
+      for (const variation of variations) {
+        const { data: foundClient, error: variationError } = await supabase
+          .from('clients')
+          .select('id, name, phone, birth_date, notes, tags, total_visits')
+          .eq('unit_id', unit_id)
+          .eq('phone', variation)
+          .maybeSingle();
+        
+        if (variationError) {
+          console.error(`Erro buscando variação ${variation}:`, variationError);
+          continue;
+        }
+        
+        if (foundClient) {
+          console.log(`✅ Cliente encontrado com variação ${variation}:`, foundClient.name);
+          existingClient = foundClient;
+          break;
+        }
+      }
+    }
 
     if (existingClient) {
-      console.log('Cliente existente encontrado:', existingClient);
-      
-      // Verificar se temos novos dados para atualizar
-      const updateData: any = {};
-      if (clientBirthDate && !existingClient.birth_date) {
-        updateData.birth_date = clientBirthDate;
-      }
-      if (clientNotes && clientNotes !== existingClient.notes) {
-        updateData.notes = clientNotes;
-      }
-      if (clientTags && clientTags.length > 0) {
-        // Merge tags existentes com novas (sem duplicatas)
-        const existingTags = existingClient.tags || [];
-        const mergedTags = [...new Set([...existingTags, ...clientTags])];
-        if (JSON.stringify(mergedTags) !== JSON.stringify(existingTags)) {
-          updateData.tags = mergedTags;
-        }
-      }
-
-      // Atualizar cliente se houver novos dados
-      if (Object.keys(updateData).length > 0) {
-        console.log('Atualizando cliente existente com novos dados:', updateData);
-        const { data: updatedClient, error: updateError } = await supabase
-          .from('clients')
-          .update(updateData)
-          .eq('id', existingClient.id)
-          .select('id, name, phone, birth_date, notes, tags, total_visits')
-          .single();
-
-        if (updateError) {
-          console.error('Erro ao atualizar cliente:', updateError);
-          clientData = existingClient;
-        } else {
-          console.log('Cliente atualizado com sucesso:', updatedClient);
-          clientData = updatedClient;
-        }
-      } else {
-        clientData = existingClient;
-      }
+      console.log('Cliente existente encontrado, usando dados existentes:', existingClient.name);
+      // Usar dados do cliente existente SEM atualizar (preservar cadastro original)
+      clientData = existingClient;
     } else {
-      // Criar novo cliente com telefone
+      // Criar novo cliente SOMENTE se realmente não existe
       console.log(`Criando novo cliente: ${clientName} - ${clientPhone}`);
       const { data: newClient, error: clientCreateError } = await supabase
         .from('clients')
@@ -780,7 +775,7 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
       console.log('Cliente encontrado por nome:', existingClient);
       clientData = existingClient;
     } else {
-      // Criar cliente SEM telefone
+      // Criar cliente novo sem telefone
       console.log(`Criando novo cliente sem telefone: ${clientName}`);
       const { data: newClient, error: clientCreateError } = await supabase
         .from('clients')
@@ -788,7 +783,7 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
           unit_id,
           company_id: company_id || null,
           name: clientName,
-          phone: null,
+          phone: '',
           birth_date: clientBirthDate,
           notes: clientNotes,
           tags: clientTags,
@@ -798,8 +793,7 @@ async function handleCreate(supabase: any, body: any, corsHeaders: any) {
         .single();
 
       if (clientCreateError) {
-        console.error('Erro ao criar cliente sem telefone:', clientCreateError);
-        // Não bloquear agendamento se falhar cadastro sem telefone
+        console.error('ERRO ao criar cliente:', clientCreateError);
       } else {
         console.log('Novo cliente (sem telefone) criado:', newClient);
         clientData = newClient;
