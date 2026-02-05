@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
-const RECAPTCHA_SITE_KEY = '6Le2q2EsAAAAALI1XXCLYyPsl3gfaulb_0JgYXs7';
+const RECAPTCHA_SITE_KEY = '6Le2q2EsAAAAALT1XXCEYyPsT3gfauLb_0JgYXs7';
 
 // Extend window for grecaptcha enterprise
 declare global {
