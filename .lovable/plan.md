@@ -1,78 +1,42 @@
 
-# Plano: Melhorar Preview de Compartilhamento no WhatsApp
+# Plano: Corrigir Preview de Imagem no WhatsApp
 
-## Problema Identificado
+## Diagnóstico
 
-Quando o link do BarberSoft e compartilhado no WhatsApp, a preview nao aparece corretamente porque:
+O Facebook Debugger mostra a imagem corretamente, mas o WhatsApp não. Isso pode acontecer por:
 
-1. A URL da imagem `og:image` esta relativa (`/og-image.png`) no `index.html`
-2. O WhatsApp e outros crawlers nao executam JavaScript, entao ignoram o `SEOHead.tsx`
-3. A imagem precisa de URL absoluta para funcionar
+1. **Cache agressivo do WhatsApp** - O WhatsApp guarda previews por muito tempo
+2. **Meta tags incompletas** - Faltam algumas tags que o WhatsApp pode esperar
+3. **Tamanho do arquivo** - A imagem pode estar muito pesada
 
-## O Que o ComunicaZap Faz de Diferente
+## Solução
 
-No print, o ComunicaZap mostra:
-- Imagem grande da pagina inicial com o dashboard
-- Titulo: "Comunica Zap - Envio em Massa via WhatsApp"
-- Descricao: "Sistema profissional para disparo de mensagens..."
-- URL: comunicazap.com.br
+### 1. Adicionar Meta Tags Extras no index.html
 
-## Solucao para o BarberSoft
-
-### Mudancas no index.html
-
-Atualizar as meta tags Open Graph com URLs absolutas:
+Vou adicionar tags adicionais que podem ajudar o WhatsApp:
 
 ```html
-<!-- Open Graph -->
-<meta property="og:title" content="BarberSoft - Sistema de Gestao para Barbearias" />
-<meta property="og:description" content="Gestao completa da sua barbearia. Agenda, financeiro, comissoes, clientes e marketing integrado com WhatsApp. Teste gratis!" />
-<meta property="og:type" content="website" />
-<meta property="og:url" content="https://barbersoft.com.br" />
-<meta property="og:image" content="https://barbersoft.com.br/og-image.png" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
-<meta property="og:locale" content="pt_BR" />
-<meta property="og:site_name" content="BarberSoft" />
-
-<!-- Twitter Card -->
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="BarberSoft - Sistema de Gestao para Barbearias" />
-<meta name="twitter:description" content="Gestao completa da sua barbearia. Agenda, financeiro, comissoes, clientes e marketing integrado com WhatsApp." />
-<meta name="twitter:image" content="https://barbersoft.com.br/og-image.png" />
+<!-- Adicionar após as tags existentes -->
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:secure_url" content="https://barbersoft.com.br/og-image.png" />
+<meta property="og:image:alt" content="BarberSoft - Sistema de Gestão para Barbearias com Dashboard e Chat Jackson" />
 ```
 
-### Sobre a Imagem og-image.png
+### 2. Forçar Cache Reset
 
-A imagem ideal para o Open Graph deve:
-- Ter 1200x630 pixels (proporcao 1.91:1)
-- Mostrar visualmente o sistema (como o print da landing page do BarberSoft)
-- Ter o logo e textos legiveis
+Para forçar o WhatsApp a buscar novamente, as opções são:
 
-Se a imagem atual (`public/og-image.png`) nao representa bem o sistema, sera necessario criar uma nova baseada na landing page.
+- **Opção A**: Renomear a imagem para `og-image-v2.png` e atualizar as meta tags (força o WhatsApp a tratar como novo link)
+- **Opção B**: Aguardar algumas horas para o cache expirar naturalmente
+
+**Recomendo a Opção A** (renomear) pois é mais rápida.
+
+### Arquivos a Modificar
+
+1. `index.html` - Adicionar meta tags extras e atualizar URL da imagem
+2. `public/og-image.png` - Renomear para `public/og-image-v2.png`
+3. `src/components/seo/SEOHead.tsx` - Atualizar referência da imagem padrão
 
 ## Resultado Esperado
 
-Ao compartilhar `https://barbersoft.com.br` no WhatsApp:
-
-```text
-+------------------------------------------+
-|  [Imagem da Landing Page do BarberSoft]  |
-|  Dashboard + Chat Jackson + Titulo       |
-+------------------------------------------+
-| BarberSoft - Sistema de Gestao para      |
-| Barbearias                               |
-| Gestao completa da sua barbearia.        |
-| Agenda, financeiro, comissoes...         |
-| barbersoft.com.br                        |
-+------------------------------------------+
-```
-
-## Arquivos a Modificar
-
-1. `index.html` - Corrigir URLs para absolutas
-2. `public/og-image.png` - Verificar/atualizar imagem (se necessario)
-
-## Observacao Importante
-
-Apos fazer as mudancas, o cache do WhatsApp pode demorar algumas horas para atualizar. Para testar imediatamente, voce pode usar o Facebook Sharing Debugger (https://developers.facebook.com/tools/debug/) para forcar a atualizacao do cache.
+Após publicar e enviar o link em um **chat novo** do WhatsApp, a imagem deve aparecer corretamente como no ComunicaZap.
